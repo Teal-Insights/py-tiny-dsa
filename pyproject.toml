@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiny-dsa"
+version = "0.1.0"
+description = "A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing debt-to-GDP ratio over a five-year horizon with one configurable shock."
+requires-python = ">=3.13"
+
+[tool.setuptools]
+packages = ["tiny_dsa"]
+
+[dependency-groups]
+dev = [
+    "quarto>=0.1.0",
+    "great-docs>=0.12.0",
+]
