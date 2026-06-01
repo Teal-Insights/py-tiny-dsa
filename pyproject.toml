@@ -7,6 +7,10 @@ name = "tiny-dsa"
 version = "0.1.0"
 description = "A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing debt-to-GDP ratio over a five-year horizon with one configurable shock."
 requires-python = ">=3.13"
+dependencies = [
+    "fastpyxl",
+    "numpy"
+]
 
 [tool.setuptools]
 packages = ["tiny_dsa"]
