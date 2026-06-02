@@ -79,9 +79,9 @@ def cell_outputs_f12(ctx):
     return xl_eval(ctx, 'Engine!G6', cell_engine_g6)
 
 
-def cell_engine_b20(ctx):
-    '''Formula: =Inputs!B6'''
-    return xl_eval(ctx, 'Inputs!B6', cell_inputs_b6)
+def cell_engine_b9(ctx):
+    '''Formula: =OFFSET(Inputs!$B$26,0,Inputs!$B$22-1)'''
+    return xl_offset(ctx, ('Inputs', 26, 2), 0.0, xl_sub(xl_cell(ctx, 'Inputs!B22'), 1.0), None, None)
 
 
 def cell_engine_c10(ctx):
@@ -89,14 +89,14 @@ def cell_engine_c10(ctx):
     return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!C5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
 
 
-def cell_engine_b9(ctx):
-    '''Formula: =OFFSET(Inputs!$B$26,0,Inputs!$B$22-1)'''
-    return xl_offset(ctx, ('Inputs', 26, 2), 0.0, xl_sub(xl_cell(ctx, 'Inputs!B22'), 1.0), None, None)
+def cell_engine_c16(ctx):
+    '''Formula: =Inputs!C18+CHOOSE(Inputs!$B$22,0,0,$B$9)*C10'''
+    return xl_add(xl_cell(ctx, 'Inputs!C18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
 
 
-def cell_engine_c14(ctx):
-    '''Formula: =Inputs!C16+CHOOSE(Inputs!$B$22,$B$9,0,0)*C10'''
-    return xl_add(xl_cell(ctx, 'Inputs!C16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
+def cell_engine_b20(ctx):
+    '''Formula: =Inputs!B6'''
+    return xl_eval(ctx, 'Inputs!B6', cell_inputs_b6)
 
 
 def cell_engine_c15(ctx):
@@ -104,9 +104,9 @@ def cell_engine_c15(ctx):
     return xl_add(xl_cell(ctx, 'Inputs!C17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
 
 
-def cell_engine_c16(ctx):
-    '''Formula: =Inputs!C18+CHOOSE(Inputs!$B$22,0,0,$B$9)*C10'''
-    return xl_add(xl_cell(ctx, 'Inputs!C18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
+def cell_engine_c14(ctx):
+    '''Formula: =Inputs!C16+CHOOSE(Inputs!$B$22,$B$9,0,0)*C10'''
+    return xl_add(xl_cell(ctx, 'Inputs!C16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
 
 
 def cell_engine_c20(ctx):
@@ -124,14 +124,14 @@ def cell_engine_d10(ctx):
     return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!D5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
 
 
-def cell_engine_d14(ctx):
-    '''Formula: =Inputs!D16+CHOOSE(Inputs!$B$22,$B$9,0,0)*D10'''
-    return xl_add(xl_cell(ctx, 'Inputs!D16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10)))
-
-
 def cell_engine_d15(ctx):
     '''Formula: =Inputs!D17+CHOOSE(Inputs!$B$22,0,$B$9,0)*D10'''
     return xl_add(xl_cell(ctx, 'Inputs!D17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10)))
+
+
+def cell_engine_d14(ctx):
+    '''Formula: =Inputs!D16+CHOOSE(Inputs!$B$22,$B$9,0,0)*D10'''
+    return xl_add(xl_cell(ctx, 'Inputs!D16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10)))
 
 
 def cell_engine_d16(ctx):
@@ -154,6 +154,11 @@ def cell_engine_e10(ctx):
     return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!E5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
 
 
+def cell_engine_e15(ctx):
+    '''Formula: =Inputs!E17+CHOOSE(Inputs!$B$22,0,$B$9,0)*E10'''
+    return xl_add(xl_cell(ctx, 'Inputs!E17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10)))
+
+
 def cell_engine_e16(ctx):
     '''Formula: =Inputs!E18+CHOOSE(Inputs!$B$22,0,0,$B$9)*E10'''
     return xl_add(xl_cell(ctx, 'Inputs!E18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10)))
@@ -162,11 +167,6 @@ def cell_engine_e16(ctx):
 def cell_engine_e14(ctx):
     '''Formula: =Inputs!E16+CHOOSE(Inputs!$B$22,$B$9,0,0)*E10'''
     return xl_add(xl_cell(ctx, 'Inputs!E16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10)))
-
-
-def cell_engine_e15(ctx):
-    '''Formula: =Inputs!E17+CHOOSE(Inputs!$B$22,0,$B$9,0)*E10'''
-    return xl_add(xl_cell(ctx, 'Inputs!E17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10)))
 
 
 def cell_engine_e20(ctx):
@@ -184,11 +184,6 @@ def cell_engine_f10(ctx):
     return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!F5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
 
 
-def cell_engine_f14(ctx):
-    '''Formula: =Inputs!F16+CHOOSE(Inputs!$B$22,$B$9,0,0)*F10'''
-    return xl_add(xl_cell(ctx, 'Inputs!F16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10)))
-
-
 def cell_engine_f15(ctx):
     '''Formula: =Inputs!F17+CHOOSE(Inputs!$B$22,0,$B$9,0)*F10'''
     return xl_add(xl_cell(ctx, 'Inputs!F17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10)))
@@ -197,6 +192,11 @@ def cell_engine_f15(ctx):
 def cell_engine_f16(ctx):
     '''Formula: =Inputs!F18+CHOOSE(Inputs!$B$22,0,0,$B$9)*F10'''
     return xl_add(xl_cell(ctx, 'Inputs!F18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10)))
+
+
+def cell_engine_f14(ctx):
+    '''Formula: =Inputs!F16+CHOOSE(Inputs!$B$22,$B$9,0,0)*F10'''
+    return xl_add(xl_cell(ctx, 'Inputs!F16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10)))
 
 
 def cell_engine_f20(ctx):
@@ -214,11 +214,6 @@ def cell_engine_g10(ctx):
     return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!G5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
 
 
-def cell_engine_g15(ctx):
-    '''Formula: =Inputs!G17+CHOOSE(Inputs!$B$22,0,$B$9,0)*G10'''
-    return xl_add(xl_cell(ctx, 'Inputs!G17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10)))
-
-
 def cell_engine_g14(ctx):
     '''Formula: =Inputs!G16+CHOOSE(Inputs!$B$22,$B$9,0,0)*G10'''
     return xl_add(xl_cell(ctx, 'Inputs!G16'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 1 else (((0.0) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10)))
@@ -227,6 +222,11 @@ def cell_engine_g14(ctx):
 def cell_engine_g16(ctx):
     '''Formula: =Inputs!G18+CHOOSE(Inputs!$B$22,0,0,$B$9)*G10'''
     return xl_add(xl_cell(ctx, 'Inputs!G18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10)))
+
+
+def cell_engine_g15(ctx):
+    '''Formula: =Inputs!G17+CHOOSE(Inputs!$B$22,0,$B$9,0)*G10'''
+    return xl_add(xl_cell(ctx, 'Inputs!G17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10)))
 
 
 def cell_engine_g20(ctx):

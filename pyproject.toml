@@ -9,7 +9,7 @@ description = "A Python implementation of the Tiny-DSA Excel workbook, a stylize
 requires-python = ">=3.13"
 dependencies = [
     "fastpyxl",
-    "numpy"
+    "numpy",
 ]
 
 [tool.setuptools]
@@ -19,4 +19,7 @@ packages = ["tiny_dsa"]
 dev = [
     "quarto>=0.1.0",
     "great-docs>=0.12.0",
+    "pandas",
+    "polars",
+    "matplotlib"
 ]
