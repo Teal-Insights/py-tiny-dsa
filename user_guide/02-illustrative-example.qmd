@@ -1,10 +1,10 @@
 ---
-title: "Illustrative Example"
+title: "Illustrative example"
 ---
 
-This example walks through a complete DSA for the fictional country of Borvelia. The baseline assumes flat real GDP growth of 3.5%, a real interest rate of 4.0%, and a primary balance consolidating from –1.0% to +1.0% of GDP over five years. The initial debt-to-GDP ratio is 60%. We apply three shock scenarios: a –2 pp growth shock, a +2 pp interest rate shock, and a –1 pp primary balance shock, all starting in projection year 2.
+This example recreates the three shock scenarios for Borvelia described in the original Tiny-DSA guide. We assume an initial debt stock of 60% of GDP at the end of year 0, flat real GDP growth of 3.5%, a real interest rate of 4.0%, and a primary balance that consolidates from –1.0% to +1.0% over five years. The shock parameters are a 2‑percentage‑point reduction in growth, a 2‑percentage‑point increase in the interest rate, and a 1‑percentage‑point reduction in the primary balance, each starting in year 2.
 
-Start by creating a context and setting baseline inputs and shock parameters:
+We first set up the baseline scenario using `make_context` and the `set_*` functions. The baseline shock magnitudes are set to zero so that the shocked path coincides with the baseline. Then we compute the baseline debt path with `compute_output_baseline`.
 
 ```{python}
 from tiny_dsa.api import (
@@ -13,94 +13,137 @@ from tiny_dsa.api import (
     set_growth_baseline,
     set_interest_baseline,
     set_primary_balance_baseline,
-    set_shock_year,
-    set_shock_type,
     set_shock_magnitudes,
+    set_shock_type,
+    set_shock_year,
     compute_output_baseline,
     compute_output_shocked,
     compute_output_delta,
 )
 
 def time_series_records(values):
-    """Helper to turn a list of floats into records keyed by TIME_PERIOD."""
+    """Convert a list of floats to time series records."""
     return [{"TIME_PERIOD": i + 1, "OBS_VALUE": v} for i, v in enumerate(values)]
+```
 
-# Create context and set country
-ctx = make_context()
-set_country_name(ctx, [{"OBS_VALUE": "Borvelia"}])
+```{python}
+# --- Baseline ---
+baseline_ctx = make_context()
 
-# Baseline assumptions: constant growth and interest, linear primary balance
-set_growth_baseline(ctx, time_series_records([3.5, 3.5, 3.5, 3.5, 3.5]))
-set_interest_baseline(ctx, time_series_records([4.0, 4.0, 4.0, 4.0, 4.0]))
-set_primary_balance_baseline(ctx, time_series_records([-1.0, -0.5, 0.0, 0.5, 1.0]))
+set_country_name(baseline_ctx, [{"OBS_VALUE": "Borvelia"}])
 
-# Shock starts in year 2
-set_shock_year(ctx, [{"OBS_VALUE": 2}])
+# Baseline assumptions
+set_growth_baseline(baseline_ctx, time_series_records([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(baseline_ctx, time_series_records([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(baseline_ctx, time_series_records([-1.0, -0.5, 0.0, 0.5, 1.0]))
 
-# Set magnitudes for all three shock parameters (only the active one is used)
-set_shock_magnitudes(ctx, [
+# Shock settings: no shock in baseline
+set_shock_year(baseline_ctx, [{"OBS_VALUE": 2}])
+set_shock_type(baseline_ctx, [{"OBS_VALUE": 1}])
+set_shock_magnitudes(baseline_ctx, [
+    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": 0.0},
+    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 0.0},
+    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": 0.0},
+])
+
+baseline_records = compute_output_baseline(ctx=baseline_ctx)
+baseline_values = [r["OBS_VALUE"] for r in baseline_records]
+print("Baseline debt/GDP:", baseline_values)
+```
+
+### Growth shock
+
+The growth shock reduces real GDP growth by 2 percentage points from year 2 onward. We create a new context and set the shock type to 1 (growth shock) and the magnitude to –2.0.
+
+```{python}
+# --- Growth shock ---
+growth_ctx = make_context()
+set_country_name(growth_ctx, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(growth_ctx, time_series_records([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(growth_ctx, time_series_records([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(growth_ctx, time_series_records([-1.0, -0.5, 0.0, 0.5, 1.0]))
+
+set_shock_year(growth_ctx, [{"OBS_VALUE": 2}])
+set_shock_type(growth_ctx, [{"OBS_VALUE": 1}])  # 1 = growth shock
+set_shock_magnitudes(growth_ctx, [
     {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": -2.0},
+    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 0.0},
+    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": 0.0},
+])
+
+growth_shocked_records = compute_output_shocked(ctx=growth_ctx)
+growth_values = [r["OBS_VALUE"] for r in growth_shocked_records]
+print("Growth shock debt/GDP:", growth_values)
+```
+
+### Interest-rate shock
+
+The interest-rate shock increases the real interest rate by 2 percentage points. Shock type 2 selects the interest rate, and the magnitude is +2.0.
+
+```{python}
+# --- Interest rate shock ---
+interest_ctx = make_context()
+set_country_name(interest_ctx, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(interest_ctx, time_series_records([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(interest_ctx, time_series_records([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(interest_ctx, time_series_records([-1.0, -0.5, 0.0, 0.5, 1.0]))
+
+set_shock_year(interest_ctx, [{"OBS_VALUE": 2}])
+set_shock_type(interest_ctx, [{"OBS_VALUE": 2}])  # 2 = interest rate shock
+set_shock_magnitudes(interest_ctx, [
+    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": 0.0},
     {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 2.0},
+    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": 0.0},
+])
+
+interest_shocked_records = compute_output_shocked(ctx=interest_ctx)
+interest_values = [r["OBS_VALUE"] for r in interest_shocked_records]
+print("Interest shock debt/GDP:", interest_values)
+```
+
+### Primary-balance shock
+
+The primary-balance shock reduces the primary balance by 1 percentage point every year from year 2. We use shock type 3 and magnitude –1.0.
+
+```{python}
+# --- Primary balance shock ---
+pb_ctx = make_context()
+set_country_name(pb_ctx, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(pb_ctx, time_series_records([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(pb_ctx, time_series_records([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(pb_ctx, time_series_records([-1.0, -0.5, 0.0, 0.5, 1.0]))
+
+set_shock_year(pb_ctx, [{"OBS_VALUE": 2}])
+set_shock_type(pb_ctx, [{"OBS_VALUE": 3}])  # 3 = primary balance shock
+set_shock_magnitudes(pb_ctx, [
+    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": 0.0},
+    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 0.0},
     {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": -1.0},
 ])
 
-# Compute baseline (common for all shocks)
-baseline = compute_output_baseline(ctx=ctx)
+pb_shocked_records = compute_output_shocked(ctx=pb_ctx)
+pb_values = [r["OBS_VALUE"] for r in pb_shocked_records]
+print("PB shock debt/GDP:", pb_values)
 ```
 
-The `compute_output_baseline` function returns records for years 1–5. To match the typical DSA table, we prepend the known initial debt ratio (60% of GDP) for year 0.
+### Combined results
 
-Now compute each shock scenario by changing the shock type and calling the corresponding `compute_` functions. The context is reused, so only the shock type needs to be updated.
-
-```{python}
-# Growth shock (type 1)
-set_shock_type(ctx, [{"OBS_VALUE": 1}])
-shocked_growth = compute_output_shocked(ctx=ctx)
-delta_growth = compute_output_delta(ctx=ctx)
-
-# Interest rate shock (type 2)
-set_shock_type(ctx, [{"OBS_VALUE": 2}])
-shocked_interest = compute_output_shocked(ctx=ctx)
-delta_interest = compute_output_delta(ctx=ctx)
-
-# Primary balance shock (type 3)
-set_shock_type(ctx, [{"OBS_VALUE": 3}])
-shocked_pb = compute_output_shocked(ctx=ctx)
-delta_pb = compute_output_delta(ctx=ctx)
-```
-
-Collect the results into a table using pandas. For each scenario we build a DataFrame column from the OBS_VALUE field and prepend the initial debt for year 0.
+Finally, we collect all trajectories in a table. (Note: the initial debt of 60% at year 0 is not part of the API output, which spans years 1–5.)
 
 ```{python}
 import pandas as pd
 
-def to_series(records, name):
-    years = [int(r["TIME_PERIOD"]) for r in records]
-    values = [float(r["OBS_VALUE"]) for r in records]
-    s = pd.Series(values, index=years, name=name)
-    # Insert year 0 with initial debt 60
-    s = pd.concat([pd.Series({0: 60.0}), s])
-    s.index.name = "Year"
-    return s
-
-df = pd.DataFrame({
-    "Baseline": to_series(baseline, "Baseline"),
-    "Growth shock": to_series(shocked_growth, "Growth shock"),
-    "Interest shock": to_series(shocked_interest, "Interest shock"),
-    "Primary balance shock": to_series(shocked_pb, "Primary balance shock"),
-})
-
-# Display formatted table
-print("Debt-to-GDP Trajectory (% of GDP)")
-print(df.round(2).to_markdown(index=True))
+years = [r["TIME_PERIOD"] for r in baseline_records]
+data = {
+    "Year": years,
+    "Baseline": baseline_values,
+    "Growth shock": growth_values,
+    "Interest shock": interest_values,
+    "Primary balance shock": pb_values,
+}
+df = pd.DataFrame(data)
+df.set_index("Year", inplace=True)
+print(df.to_markdown())
 ```
 
-This produces a markdown table identical to the canonical Borvelia table. The differences (delta) from baseline can be computed as `shocked - baseline` and are available via `compute_output_delta` for each scenario (shown here as an additional check).
-
-```{python}
-df_delta = df.drop(columns="Baseline").subtract(df["Baseline"], axis=0)
-print("\nDelta from baseline (percentage points)")
-print(df_delta.round(2).to_markdown(index=True))
-```
-
-Under the baseline, the snowball factor (1.00483) causes a modest rise in debt, but the primary balance consolidation offsets it by year 5. The growth and interest rate shocks raise the snowball factor to about 1.024, leading to roughly 5 pp higher debt by year 5. The primary balance shock, though smaller (1 pp vs 2 pp), adds a direct linear drag, producing a 4 pp increase. These results illustrate the sensitivity of debt trajectories to permanent shifts in growth, interest rates, and fiscal balances.
+The results match the analytic description: the growth and interest-rate shocks produce nearly identical trajectories because of the symmetry in the snowball factor, while the primary-balance shock (half the magnitude) has a smaller, roughly linear effect.
