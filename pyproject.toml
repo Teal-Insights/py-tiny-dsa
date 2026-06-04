@@ -23,3 +23,7 @@ dev = [
     "polars",
     "matplotlib",
 ]
+validation = [
+    "xlwings>=0.35.3",
+    "pywin32>=311; sys_platform == 'win32'",
+]

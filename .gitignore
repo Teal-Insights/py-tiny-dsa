@@ -4,3 +4,4 @@
 __pycache__/
 .venv/
 _validate_user_guide_cells.py
+tests/results/local/
