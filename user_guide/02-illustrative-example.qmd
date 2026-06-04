@@ -114,11 +114,14 @@ table_1 = (
     )
     .sort("TIME_PERIOD")
     .select(
-        pl.col("TIME_PERIOD"),
-        pl.col("Baseline", "Growth shock", "Interest shock", "Primary balance shock").round(2)
+        "TIME_PERIOD",
+        "Baseline",
+        "Growth shock",
+        "Interest shock",
+        "Primary balance shock",
     )
+    .with_columns(pl.col(pl.Float64).round(2))
 )
 
 print(table_1)
 ```
-

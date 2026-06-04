@@ -19,3 +19,5 @@ Tiny DSA omits, deliberately, the contribution of inflation to the debt ratio (t
 [^2]: For the corresponding treatment in operational frameworks, see International Monetary Fund and World Bank (2018), Sections II.B–II.D and Appendix III, and the discussion in Escolano (2010).
 
 This guide explains how to install and use the Tiny DSA package and how to interpret the outputs. The remainder of the guide is structured as follows. Section II provides a functional overview of the package, including its API conventions, key data structures, and the operational steps required to select a country, set baseline parameters, and configure a shock. Section III walks through three illustrative scenarios using a fictional country, Borvelia. Section IV provides a detailed discussion of the methodology, including the debt-dynamics identity, the shock specification, a realism check on the outputs, and the limitations of the modeling approach.
+
+For correctness evidence, see [Excel parity validation](03-excel-parity-validation.qmd), which summarizes the exported-library differential test against the source workbook.
