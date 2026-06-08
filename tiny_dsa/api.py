@@ -121,6 +121,59 @@ def set_country_name(
         requires_address=False,
     )
 
+_LEAF_INDEX_COUNTRY_INITIAL_DEBT = {
+    (('COUNTRY', 'Borvelia'),): 'Inputs!B10',
+    (('COUNTRY', 'Litellia'),): 'Inputs!B11',
+    (('COUNTRY', 'Aurelium'),): 'Inputs!B12',
+}
+
+def set_country_initial_debt(
+    ctx: EvalContext,
+    records: Records,
+    *,
+    strict: bool = True,
+) -> None:
+    """Set the initial debt-to-GDP ratios in the country profile lookup table.
+
+    Updates the initial debt-to-GDP ratios for each country in the profile table used for country selection and debt projection.
+    Each record maps to a row in the country profile table, where COUNTRY is the row label in column A and OBS_VALUE is the cell value in column B.
+
+    Args:
+        records (Records): Records to apply to the workbook inputs.
+            Required record fields:
+                - COUNTRY: The country name that identifies the row in the country profile lookup table.
+                - OBS_VALUE: The initial debt-to-GDP ratio, expressed as a percent of GDP.
+            Optional record fields:
+                - INDICATOR: The indicator that classifies this series as the initial debt-to-GDP data. If supplied, expected value: "initial_debt_to_gdp".
+                - UNIT_MEASURE: The unit of measurement for the debt-to-GDP ratio. If supplied, expected value: "PC_GDP".
+
+    Returns:
+        None: Applies the input updates to ctx.
+
+    Source binding:
+        Workbook range: Inputs!B10:B12
+        Layout: row_series
+        Value type: float
+
+    Examples:
+        set_country_initial_debt(ctx, [
+            {'COUNTRY': 'Borvelia', 'OBS_VALUE': 60.0},
+            {'COUNTRY': 'Litellia', 'OBS_VALUE': 80.0},
+        ])
+    """
+    _apply_series_records(
+        ctx,
+        records,
+        key_fields=('COUNTRY',),
+        allowed_fields=frozenset({'COUNTRY', 'INDICATOR', 'OBS_VALUE', 'UNIT_MEASURE'}),
+        measure_field='OBS_VALUE',
+        leaf_index=_LEAF_INDEX_COUNTRY_INITIAL_DEBT,
+        strict=strict,
+        fn_name='set_country_initial_debt',
+        allow_address=False,
+        requires_address=False,
+    )
+
 _LEAF_INDEX_GROWTH_BASELINE = {
     (('TIME_PERIOD', 1),): 'Inputs!C16',
     (('TIME_PERIOD', 2),): 'Inputs!D16',
