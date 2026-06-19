@@ -2,19 +2,10 @@
 title: "Illustrative Example"
 ---
 
-Borvelia is a stylised small open economy with general-government debt of 60 % of GDP at the end of year 0. The authorities project flat real GDP growth of 3.5 % per year, flat real interest rates of 4.0 %, and a fiscal consolidation that moves the primary balance from a deficit of 1.0 % of GDP in year 1 to a surplus of 1.0 % of GDP in year 5.
-
-We will assess the debt‑trajectory consequences of three alternative shocks, each beginning in year 2 and persisting through year 5:
-
-- A 2‑percentage‑point reduction in real growth.
-- A 2‑percentage‑point increase in the real interest rate.
-- A 1‑percentage‑point reduction in the primary balance.
-
-All scenarios can be implemented with the `tiny_dsa.api` module. We start by setting up the evaluation context and the baseline inputs.
+Borvelia is a stylised small open economy with general-government debt of 60 percent of GDP at end of year 0. The authorities project flat real GDP growth of 3.5 percent per year over the medium term, flat real interest rates of 4.0 percent, and a fiscal‑consolidation path that swings the primary balance from a deficit of 1.0 percent of GDP in year 1 to a surplus of 1.0 percent by year 5. We assess three alternative shocks, each beginning in year 2 and persisting through the end of the five‑year horizon: a 2‑percentage‑point reduction in real growth, a 2‑percentage‑point increase in the real interest rate, and a 1‑percentage‑point reduction in the primary balance.
 
 ```{python}
 import polars as pl
-
 from tiny_dsa.api import (
     make_context,
     set_country_name,
@@ -30,133 +21,124 @@ from tiny_dsa.api import (
 )
 
 def time_series(values: list[float]) -> list[dict[str, float | int]]:
-    """Convert a list of values into TIME_PERIOD records."""
     return [{"TIME_PERIOD": i + 1, "OBS_VALUE": value} for i, value in enumerate(values)]
 
 def debt_to_gdp_frame(records: list[dict[str, object]]) -> pl.DataFrame:
-    """Convert records from compute_output_* into a tidy DataFrame."""
     return (
         pl.DataFrame(records)
         .sort("TIME_PERIOD")
-        .select(
-            "TIME_PERIOD",
-            pl.col("OBS_VALUE").alias("Debt/GDP (%)"),
-        )
+        .select("TIME_PERIOD", pl.col("OBS_VALUE").alias("Debt/GDP (%)"))
     )
-```
-
-Create the context and set the country name.
-
-```{python}
-ctx = make_context()
-set_country_name(ctx, [{"OBS_VALUE": "Borvelia"}])
 ```
 
 ### Baseline trajectory
 
-Set the baseline macroeconomic and fiscal assumptions, and the shock start year.
-
 ```{python}
-# Baseline growth: 3.5% each year
+ctx = make_context()
+set_country_name(ctx, [{"OBS_VALUE": "Borvelia"}])
 set_growth_baseline(ctx, time_series([3.5, 3.5, 3.5, 3.5, 3.5]))
-
-# Baseline real interest rate: 4.0% each year
 set_interest_baseline(ctx, time_series([4.0, 4.0, 4.0, 4.0, 4.0]))
-
-# Baseline primary balance: -1.0, -0.5, 0.0, 0.5, 1.0 (% of GDP)
 set_primary_balance_baseline(ctx, time_series([-1.0, -0.5, 0.0, 0.5, 1.0]))
 
-# Shock starts in year 2
-set_shock_year(ctx, [{"OBS_VALUE": 2}])
-
-baseline_records = compute_output_baseline(ctx=ctx)
+baseline_debt = debt_to_gdp_frame(compute_output_baseline(ctx=ctx))
+baseline_debt
 ```
 
-### Shock scenarios
+The resulting baseline debt-to-GDP path starts at 60.0 in year 0, rises modestly during the deficit years, and then declines as the primary balance turns positive, ending at 61.49 percent in year 5.
 
-For each shock we update the shock type and magnitudes, then compute the shocked debt‑to‑GDP path. The baseline is unaffected because we only modify the shock inputs; the baseline assumptions remain unchanged.
-
-#### Growth shock
-
-A 2‑percentage‑point reduction in real growth from year 2 onwards.
+### Growth‑shock scenario
 
 ```{python}
-set_shock_type(ctx, [{"OBS_VALUE": 1}])  # 1 = real GDP growth
-set_shock_magnitudes(ctx, [
-    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": -2.0},
-    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 0.0},
-    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": 0.0},
-])
-growth_shocked_records = compute_output_shocked(ctx=ctx)
-```
+ctx_growth = make_context()
+set_country_name(ctx_growth, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(ctx_growth, time_series([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(ctx_growth, time_series([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(ctx_growth, time_series([-1.0, -0.5, 0.0, 0.5, 1.0]))
+set_shock_year(ctx_growth, [{"OBS_VALUE": 2}])
+set_shock_type(ctx_growth, [{"OBS_VALUE": 1}])
+set_shock_magnitudes(ctx_growth, [{"SHOCK_PARAMETER": "Growth", "OBS_VALUE": -2.0}])
 
-#### Interest‑rate shock
-
-A 2‑percentage‑point increase in the real interest rate from year 2 onwards.
-
-```{python}
-set_shock_type(ctx, [{"OBS_VALUE": 2}])  # 2 = real interest rate
-set_shock_magnitudes(ctx, [
-    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": 0.0},
-    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 2.0},
-    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": 0.0},
-])
-interest_shocked_records = compute_output_shocked(ctx=ctx)
-```
-
-#### Primary‑balance shock
-
-A 1‑percentage‑point reduction in the primary balance from year 2 onwards.
-
-```{python}
-set_shock_type(ctx, [{"OBS_VALUE": 3}])  # 3 = primary balance
-set_shock_magnitudes(ctx, [
-    {"SHOCK_PARAMETER": "Growth", "OBS_VALUE": 0.0},
-    {"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 0.0},
-    {"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": -1.0},
-])
-primary_shocked_records = compute_output_shocked(ctx=ctx)
-```
-
-### Full trajectories
-
-The initial debt in year 0 is 60 % of GDP. We prepend that value to each computed path and combine them into a single table.
-
-```{python}
-def prepend_year0(df, initial_debt=60.0):
-    year0 = pl.DataFrame({"TIME_PERIOD": 0, "Debt/GDP (%)": initial_debt})
-    return pl.concat(
-        [year0, df.cast({"TIME_PERIOD": pl.Int64, "Debt/GDP (%)": pl.Float64})],
-        how="vertical"
-    )
-
-baseline_full = prepend_year0(debt_to_gdp_frame(baseline_records))
-growth_full   = prepend_year0(debt_to_gdp_frame(growth_shocked_records))
-interest_full = prepend_year0(debt_to_gdp_frame(interest_shocked_records))
-primary_full  = prepend_year0(debt_to_gdp_frame(primary_shocked_records))
-
-combined = (
-    baseline_full
-    .join(growth_full,   on="TIME_PERIOD", suffix="_growth")
-    .join(interest_full, on="TIME_PERIOD", suffix="_interest")
-    .join(primary_full,  on="TIME_PERIOD", suffix="_primary")
-    .rename({
-        "Debt/GDP (%)":          "Baseline",
-        "Debt/GDP (%)_growth":   "Growth shock",
-        "Debt/GDP (%)_interest": "Interest shock",
-        "Debt/GDP (%)_primary":  "Primary balance shock",
-    })
-    .select([
-        "TIME_PERIOD",
-        "Baseline",
-        "Growth shock",
-        "Interest shock",
-        "Primary balance shock",
-    ])
-    .with_columns(
-        pl.col("Baseline", "Growth shock", "Interest shock", "Primary balance shock").round(2)
-    )
+growth_shocked = debt_to_gdp_frame(compute_output_shocked(ctx=ctx_growth))
+growth_delta = (
+    pl.DataFrame(compute_output_delta(ctx=ctx_growth))
     .sort("TIME_PERIOD")
+    .select("TIME_PERIOD", pl.col("OBS_VALUE").alias("Delta (pp GDP)"))
 )
-combined
+growth_shocked
 ```
+
+The shock raises the snowball factor and produces materially higher debt accumulation. Year‑5 debt reaches 66.58 percent, 5.09 percentage points above the baseline.
+
+### Interest‑rate‑shock scenario
+
+```{python}
+ctx_interest = make_context()
+set_country_name(ctx_interest, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(ctx_interest, time_series([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(ctx_interest, time_series([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(ctx_interest, time_series([-1.0, -0.5, 0.0, 0.5, 1.0]))
+set_shock_year(ctx_interest, [{"OBS_VALUE": 2}])
+set_shock_type(ctx_interest, [{"OBS_VALUE": 2}])
+set_shock_magnitudes(ctx_interest, [{"SHOCK_PARAMETER": "Interest", "OBS_VALUE": 2.0}])
+
+interest_shocked = debt_to_gdp_frame(compute_output_shocked(ctx=ctx_interest))
+interest_delta = (
+    pl.DataFrame(compute_output_delta(ctx=ctx_interest))
+    .sort("TIME_PERIOD")
+    .select("TIME_PERIOD", pl.col("OBS_VALUE").alias("Delta (pp GDP)"))
+)
+interest_shocked
+```
+
+The trajectory closely tracks the growth shock because the snowball factor is nearly identical. Year‑5 debt is 66.45 percent, 4.97 percentage points above the baseline.
+
+### Primary‑balance‑shock scenario
+
+```{python}
+ctx_pb = make_context()
+set_country_name(ctx_pb, [{"OBS_VALUE": "Borvelia"}])
+set_growth_baseline(ctx_pb, time_series([3.5, 3.5, 3.5, 3.5, 3.5]))
+set_interest_baseline(ctx_pb, time_series([4.0, 4.0, 4.0, 4.0, 4.0]))
+set_primary_balance_baseline(ctx_pb, time_series([-1.0, -0.5, 0.0, 0.5, 1.0]))
+set_shock_year(ctx_pb, [{"OBS_VALUE": 2}])
+set_shock_type(ctx_pb, [{"OBS_VALUE": 3}])
+set_shock_magnitudes(ctx_pb, [{"SHOCK_PARAMETER": "Primary balance", "OBS_VALUE": -1.0}])
+
+pb_shocked = debt_to_gdp_frame(compute_output_shocked(ctx=ctx_pb))
+pb_delta = (
+    pl.DataFrame(compute_output_delta(ctx=ctx_pb))
+    .sort("TIME_PERIOD")
+    .select("TIME_PERIOD", pl.col("OBS_VALUE").alias("Delta (pp GDP)"))
+)
+pb_shocked
+```
+
+The shock leaves the snowball factor unchanged but directly worsens the primary balance. Year‑5 debt is 65.52 percent, 4.03 percentage points above the baseline.
+
+### Combined debt trajectories
+
+```{python}
+year0 = pl.DataFrame({
+    "Year": [0],
+    "Baseline": [60.0],
+    "Growth shock": [60.0],
+    "Interest shock": [60.0],
+    "Primary balance shock": [60.0],
+})
+
+baseline_renamed = baseline_debt.select(pl.col("TIME_PERIOD").alias("Year"), pl.col("Debt/GDP (%)").alias("Baseline"))
+growth_renamed = growth_shocked.select(pl.col("TIME_PERIOD").alias("Year"), pl.col("Debt/GDP (%)").alias("Growth shock"))
+interest_renamed = interest_shocked.select(pl.col("TIME_PERIOD").alias("Year"), pl.col("Debt/GDP (%)").alias("Interest shock"))
+pb_renamed = pb_shocked.select(pl.col("TIME_PERIOD").alias("Year"), pl.col("Debt/GDP (%)").alias("Primary balance shock"))
+
+table = (
+    baseline_renamed
+    .join(growth_renamed, on="Year")
+    .join(interest_renamed, on="Year")
+    .join(pb_renamed, on="Year")
+)
+table = pl.concat([year0, table])
+table
+```
+
+This yields the full set of trajectories, matching Table 1 from the original workbook.
