@@ -443,15 +443,14 @@ def xl_circular_reference() -> CellValue:
     )
     return 0
 
-def xl_cell(ctx: EvalContext, address: str) -> CellValue:
-    """Evaluate a single cell address under the given context.
-
-    Resolution order:
-    - cached value (per ctx)
-    - user-provided inputs
-    - exported formula implementation (via resolver)
-    - missing cell raises KeyError
-    """
+def _evaluate_address(
+    ctx: EvalContext,
+    address: str,
+    obtain_fn: Callable[[], Callable[[EvalContext], CellValue]],
+    *,
+    preserve_structural_blank: bool = False,
+) -> CellValue:
+    """Shared evaluation path for ``xl_cell`` and ``xl_eval``."""
     if ctx.stack:
         ctx._record_dependency(ctx.stack[-1], address)
 
@@ -468,18 +467,15 @@ def xl_cell(ctx: EvalContext, address: str) -> CellValue:
         ctx.cache[address] = v
         return v
 
-    fn = ctx.resolver(address)
-    if fn is None:
-        raise KeyError(f"Cell {address} not found in graph")
+    fn = obtain_fn()
 
     ctx.computing.add(address)
     ctx.stack.append(address)
     try:
         v = fn(ctx)
-        # Excel treats "empty" formula results as 0 in most numeric contexts; the evaluator
-        # normalizes those Nones to 0. Structural blank-range cells intentionally stay None
-        # so INDEX/MATCH (and similar) see true empty cells in object arrays.
-        if v is None and not getattr(fn, "__structural_blank__", False):
+        if v is None and not (
+            preserve_structural_blank and getattr(fn, "__structural_blank__", False)
+        ):
             v = 0
         ctx.cache[address] = v
         return v
@@ -487,6 +483,27 @@ def xl_cell(ctx: EvalContext, address: str) -> CellValue:
         ctx.computing.discard(address)
         if ctx.stack and ctx.stack[-1] == address:
             ctx.stack.pop()
+
+def xl_cell(ctx: EvalContext, address: str) -> CellValue:
+    """Evaluate a single cell address under the given context.
+
+    Resolution order:
+    - cached value (per ctx)
+    - user-provided inputs
+    - exported formula implementation (via resolver)
+    - missing cell raises KeyError
+    """
+
+    def obtain_fn() -> Callable[[EvalContext], CellValue]:
+        fn = ctx.resolver(address)
+        if fn is None:
+            raise KeyError(f"Cell {address} not found in graph")
+        return fn
+
+    # Excel treats "empty" formula results as 0 in most numeric contexts; the evaluator
+    # normalizes those Nones to 0. Structural blank-range cells intentionally stay None
+    # so INDEX/MATCH (and similar) see true empty cells in object arrays.
+    return _evaluate_address(ctx, address, obtain_fn, preserve_structural_blank=True)
 
 def xl_div(left: CellValue, right: CellValue) -> float | XlError:
     if isinstance(left, XlError):
@@ -509,34 +526,7 @@ def xl_eval(
     fn: Callable[[EvalContext], CellValue],
 ) -> CellValue:
     """Evaluate a known formula implementation under the given context."""
-    if ctx.stack:
-        ctx._record_dependency(ctx.stack[-1], address)
-
-    if address in ctx.cache:
-        return ctx.cache[address]
-
-    if address in ctx.computing:
-        if ctx.iterative_enabled:
-            return ctx.iteration_values.get(address, 0)
-        return xl_circular_reference()
-
-    if address in ctx.inputs:
-        v = ctx.inputs[address]
-        ctx.cache[address] = v
-        return v
-
-    ctx.computing.add(address)
-    ctx.stack.append(address)
-    try:
-        v = fn(ctx)
-        if v is None:
-            v = 0
-        ctx.cache[address] = v
-        return v
-    finally:
-        ctx.computing.discard(address)
-        if ctx.stack and ctx.stack[-1] == address:
-            ctx.stack.pop()
+    return _evaluate_address(ctx, address, lambda: fn, preserve_structural_blank=False)
 
 def xl_ge(left: CellValue, right: CellValue) -> bool | XlError:
     return _xl_compare(">=", left, right)
