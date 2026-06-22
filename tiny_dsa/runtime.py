@@ -5,6 +5,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from enum import StrEnum
 from typing import TypeAlias, cast
 
@@ -92,6 +93,8 @@ class XlError(StrEnum):
                 return err
         return None
 
+_EXCEL_EPOCH = datetime(1899, 12, 30)
+
 def _escape_sheet_for_formula(sheet: str) -> str:
     """Escape apostrophes for use inside quoted sheet names."""
     return sheet.replace("'", "''")
@@ -111,6 +114,27 @@ def _format_address(sheet: str, row: int, col: int) -> str:
     sheet_name = _quote_sheet_if_needed(sheet)
     col_letter = fastpyxl.utils.cell.get_column_letter(col)
     return f"{sheet_name}!{col_letter}{row}"
+
+def datetime_to_excel_serial(value: datetime) -> float:
+    """Convert a naive datetime to an Excel day serial (1900 date system)."""
+    naive = value.replace(tzinfo=None) if value.tzinfo is not None else value
+    delta = naive - _EXCEL_EPOCH
+    return delta.days + (delta.seconds + delta.microseconds / 1_000_000) / 86_400.0
+
+def _try_parse_iso_date_serial(text: str) -> float | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    try:
+        if "T" in stripped or " " in stripped:
+            parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.replace(tzinfo=None)
+        else:
+            parsed = datetime.combine(date.fromisoformat(stripped), datetime.min.time())
+        return datetime_to_excel_serial(parsed)
+    except ValueError:
+        return None
 
 def excel_casefold(value: str) -> str:
     return value.casefold()
@@ -248,6 +272,9 @@ def to_number(value: CellValue) -> float | XlError:
         try:
             return float(s)
         except ValueError:
+            serial = _try_parse_iso_date_serial(s)
+            if serial is not None:
+                return serial
             return XlError.VALUE
     if isinstance(value, ExcelRange):
         return XlError.VALUE
