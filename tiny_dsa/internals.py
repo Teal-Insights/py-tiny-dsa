@@ -19,175 +19,205 @@ from .runtime import (
 
 # --- Formula cell functions ---
 
-def cell_inputs_b6(ctx):
-    '''Formula: =INDEX($A$10:$C$12,MATCH($B$5,$A$10:$A$12,0),2).'''
-    return xl_offset(ctx, xl_index_ref(('Inputs', 10, 1, 12, 3), xl_match(xl_cell(ctx, 'Inputs!B5'), np.array(np.array([[xl_cell(ctx, 'Inputs!A10')], [xl_cell(ctx, 'Inputs!A11')], [xl_cell(ctx, 'Inputs!A12')]], dtype=object), dtype=object), 0.0), 2.0), 0.0, 0.0)
+def output_delta(ctx, col):
+    """Return the difference between shocked and baseline debt-to-GDP.
+
+    Args:
+        ctx: Workbook evaluation context.
+        col: Engine column letter (C through G).
+
+    Returns:
+        The shocked debt-to-GDP minus the baseline debt-to-GDP.
+
+    Note:
+        Covers Outputs!B14:F14 (columns C..G). Excel formula: =Engine!{col}20-Engine!{col}6.
+"""
+    return xl_sub(debt_to_gdp(ctx, col), baseline_debt(ctx, col))
+
+def debt_to_gdp(ctx, col):
+    """Compute shocked debt-to-GDP ratio for a given projection column.
+
+    Args:
+        ctx: Workbook evaluation context.
+        col: Engine column letter (C through G).
+
+    Returns:
+        The debt-to-GDP ratio for the column after shocks.
+
+    Note:
+        Covers Engine!C20:G20. Excel: ={PRIOR_DEBT}*(1+(Inputs!{COL}17+CHOOSE(Inputs!B22,0,Engine!B9,0)*Engine!{COL}10)/100)/(1+(Inputs!{COL}16+CHOOSE(Inputs!B22,Engine!B9,0,0)*Engine!{COL}10)/100)-Engine!{COL}16
+        where {PRIOR_DEBT} is Inputs!B6 for C20, and the previous column's result for D20:G20.
+"""
+    if col == 'C':
+        prior_debt = xl_eval(ctx, 'Inputs!B6', initial_debt_to_gdp)
+    else:
+        prev_col = chr(ord(col) - 1)
+        prior_debt = debt_to_gdp(ctx, prev_col)
+    shock_type_raw = xl_cell(ctx, 'Inputs!B22')
+    if isinstance(shock_type_raw, XlError):
+        return shock_type_raw
+    shock_type = to_int(shock_type_raw)
+    if isinstance(shock_type, XlError):
+        return shock_type
+    if shock_type < 1 or shock_type > 3:
+        return XlError.VALUE
+    shock_magnitude = xl_eval(ctx, 'Engine!B9', shock_magnitude_resolved)
+    if shock_type == 1:
+        choose_num = 0.0
+        choose_den = shock_magnitude
+    elif shock_type == 2:
+        choose_num = shock_magnitude
+        choose_den = 0.0
+    else:
+        choose_num = 0.0
+        choose_den = 0.0
+    interest_rate = xl_cell(ctx, f'Inputs!{col}17')
+    growth_rate = xl_cell(ctx, f'Inputs!{col}16')
+    shock_active_col = shock_active(ctx, col)
+    primary_balance = primary_balance_shocked(ctx, col)
+    numerator = xl_add(1.0, xl_div(xl_add(interest_rate, xl_mul(choose_num, shock_active_col)), 100.0))
+    denominator = xl_add(1.0, xl_div(xl_add(growth_rate, xl_mul(choose_den, shock_active_col)), 100.0))
+    result = xl_sub(xl_div(xl_mul(prior_debt, numerator), denominator), primary_balance)
+    return result
+
+def baseline_debt(ctx, col):
+    """Return the baseline debt-to-GDP ratio for a given projection column.
+
+    Args:
+        ctx: Workbook evaluation context.
+        col: Engine column letter (C through G).
+
+    Returns:
+        Baseline debt-to-GDP ratio computed as (prior_debt * (1 + interest_baseline/100) / (1 + growth_baseline/100)) - primary_balance_baseline.
+
+    Note:
+        Covers Engine!C6:G6. Excel: ={PRIOR_DEBT}*(1+Inputs!{col}17/100)/(1+Inputs!{col}16/100)-Inputs!{col}18 where PRIOR_DEBT is Inputs!B6 for column C, else Engine!{prev_col}6.
+"""
+    if col == 'C':
+        prior_debt = xl_eval(ctx, 'Inputs!B6', initial_debt_to_gdp)
+    else:
+        prev_col = chr(ord(col) - 1)
+        prior_debt = baseline_debt(ctx, prev_col)
+    growth_baseline = xl_cell(ctx, f'Inputs!{col}16')
+    interest_baseline = xl_cell(ctx, f'Inputs!{col}17')
+    primary_balance_baseline = xl_cell(ctx, f'Inputs!{col}18')
+    return xl_sub(xl_div(xl_mul(prior_debt, xl_add(1.0, xl_div(interest_baseline, 100.0))), xl_add(1.0, xl_div(growth_baseline, 100.0))), primary_balance_baseline)
+
+def primary_balance_shocked(ctx, col):
+    """Return the primary balance including shock effects for a given projection column.
+
+Args:
+    ctx: Workbook evaluation context.
+    col: Engine column letter (C through G).
+
+Returns:
+    The shocked primary balance, as a float or XlError.
+
+Note:
+    Covers Engine!C16:G16. Excel: =Inputs!{col}18+CHOOSE(Inputs!$B$22,0,0,Engine!$B$9)*Engine!{col}10.
+"""
+    shock_type_raw = xl_cell(ctx, 'Inputs!B22')
+    if isinstance(shock_type_raw, XlError):
+        return shock_type_raw
+    shock_type_int = to_int(shock_type_raw)
+    if isinstance(shock_type_int, XlError):
+        return shock_type_int
+    if shock_type_int < 1 or shock_type_int > 3:
+        return XlError.VALUE
+    if shock_type_int == 1 or shock_type_int == 2:
+        shock_multiplier = 0.0
+    elif shock_type_int == 3:
+        shock_multiplier = xl_eval(ctx, 'Engine!B9', shock_magnitude_resolved)
+    else:
+        shock_multiplier = XlError.VALUE
+    baseline = xl_cell(ctx, f'Inputs!{col}18')
+    shock_active_val = shock_active(ctx, col)
+    return xl_add(baseline, xl_mul(shock_multiplier, shock_active_val))
+
+def shock_active(ctx, col):
+    """Return 1.0 when the shock is active for the given projection column.
+
+    Args:
+        ctx: Workbook evaluation context.
+        col: Engine column letter (C through G).
+
+    Returns:
+        1.0 if the projection year is at or after the shock year, else 0.0.
+
+    Note:
+        Covers Engine!C10:G10. Excel: =IF(Engine!{col}5>=Inputs!$B$21,1,0).
+"""
+    projection_year = xl_cell(ctx, f'Engine!{col}5')
+    shock_year = xl_cell(ctx, 'Inputs!B21')
+    condition = xl_ge(projection_year, shock_year)
+    bool_val = to_bool(condition)
+    if isinstance(bool_val, XlError):
+        return bool_val
+    return 1.0 if bool_val else 0.0
+
+def initial_debt_to_gdp(ctx):
+    """Look up the initial debt-to-GDP ratio for the selected country.
+
+    Args:
+        ctx: Workbook evaluation context.
+
+    Returns:
+        Initial debt-to-GDP ratio from the country profile table.
+
+    Note:
+        Covers Inputs!B6. Excel: =INDEX($A$10:$C$12,MATCH($B$5,$A$10:$A$12,0),2).
+"""
+    selected_country = xl_cell(ctx, 'Inputs!B5')
+    country_a10 = xl_cell(ctx, 'Inputs!A10')
+    country_a11 = xl_cell(ctx, 'Inputs!A11')
+    country_a12 = xl_cell(ctx, 'Inputs!A12')
+    country_lookup_array = np.array([[country_a10], [country_a11], [country_a12]], dtype=object)
+    matched_position = xl_match(selected_country, country_lookup_array, 0.0)
+    initial_debt_to_gdp_ref = xl_index_ref(('Inputs', 10, 1, 12, 3), matched_position, 2.0)
+    return xl_offset(ctx, initial_debt_to_gdp_ref, 0.0, 0.0)
+
+def shock_magnitude_resolved(ctx):
+    """Resolved shock magnitude from the shock magnitude table based on shock type.
+
+    Args:
+        ctx: Workbook evaluation context.
+
+    Returns:
+        The shock magnitude value from Inputs!B26:D26 corresponding to the shock type in Inputs!B22.
+
+    Note:
+        Covers Engine!B9. Excel: =OFFSET(Inputs!$B$26,0,Inputs!$B$22-1).
+"""
+    shock_type = xl_cell(ctx, 'Inputs!B22')
+    column_offset = xl_sub(shock_type, 1.0)
+    magnitude = xl_offset(ctx, ('Inputs', 26, 2), 0.0, column_offset, None, None)
+    return magnitude
 
-
-def cell_engine_c6(ctx):
-    '''Formula: =Inputs!B6*(1+Inputs!C17/100)/(1+Inputs!C16/100)-Inputs!C18.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Inputs!B6', cell_inputs_b6), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!C17'), 100.0))), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!C16'), 100.0))), xl_cell(ctx, 'Inputs!C18'))
-
-
-def cell_engine_d6(ctx):
-    '''Formula: =C6*(1+Inputs!D17/100)/(1+Inputs!D16/100)-Inputs!D18.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!C6', cell_engine_c6), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!D17'), 100.0))), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!D16'), 100.0))), xl_cell(ctx, 'Inputs!D18'))
-
-
-def cell_engine_e6(ctx):
-    '''Formula: =D6*(1+Inputs!E17/100)/(1+Inputs!E16/100)-Inputs!E18.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!D6', cell_engine_d6), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!E17'), 100.0))), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!E16'), 100.0))), xl_cell(ctx, 'Inputs!E18'))
-
-
-def cell_engine_f6(ctx):
-    '''Formula: =E6*(1+Inputs!F17/100)/(1+Inputs!F16/100)-Inputs!F18.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!E6', cell_engine_e6), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!F17'), 100.0))), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!F16'), 100.0))), xl_cell(ctx, 'Inputs!F18'))
-
-
-def cell_engine_g6(ctx):
-    '''Formula: =F6*(1+Inputs!G17/100)/(1+Inputs!G16/100)-Inputs!G18.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!F6', cell_engine_f6), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!G17'), 100.0))), xl_add(1.0, xl_div(xl_cell(ctx, 'Inputs!G16'), 100.0))), xl_cell(ctx, 'Inputs!G18'))
-
-
-def cell_engine_b9(ctx):
-    '''Formula: =OFFSET(Inputs!$B$26,0,Inputs!$B$22-1).'''
-    return xl_offset(ctx, ('Inputs', 26, 2), 0.0, xl_sub(xl_cell(ctx, 'Inputs!B22'), 1.0), None, None)
-
-
-def cell_engine_c10(ctx):
-    '''Formula: =IF(C5>=Inputs!$B$21,1,0).'''
-    return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!C5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
-
-
-def cell_engine_d10(ctx):
-    '''Formula: =IF(D5>=Inputs!$B$21,1,0).'''
-    return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!D5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
-
-
-def cell_engine_e10(ctx):
-    '''Formula: =IF(E5>=Inputs!$B$21,1,0).'''
-    return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!E5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
-
-
-def cell_engine_f10(ctx):
-    '''Formula: =IF(F5>=Inputs!$B$21,1,0).'''
-    return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!F5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
-
-
-def cell_engine_g10(ctx):
-    '''Formula: =IF(G5>=Inputs!$B$21,1,0).'''
-    return (_t2 if isinstance((_t2 := to_bool((_t1 := xl_ge(xl_cell(ctx, 'Engine!G5'), xl_cell(ctx, 'Inputs!B21'))))), XlError) else ((1.0) if _t2 else (0.0)))
-
-
-def cell_engine_c16(ctx):
-    '''Formula: =Inputs!C18+CHOOSE(Inputs!$B$22,0,0,$B$9)*C10.'''
-    return xl_add(xl_cell(ctx, 'Inputs!C18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10)))
-
-
-def cell_engine_d16(ctx):
-    '''Formula: =Inputs!D18+CHOOSE(Inputs!$B$22,0,0,$B$9)*D10.'''
-    return xl_add(xl_cell(ctx, 'Inputs!D18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10)))
-
-
-def cell_engine_e16(ctx):
-    '''Formula: =Inputs!E18+CHOOSE(Inputs!$B$22,0,0,$B$9)*E10.'''
-    return xl_add(xl_cell(ctx, 'Inputs!E18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10)))
-
-
-def cell_engine_f16(ctx):
-    '''Formula: =Inputs!F18+CHOOSE(Inputs!$B$22,0,0,$B$9)*F10.'''
-    return xl_add(xl_cell(ctx, 'Inputs!F18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10)))
-
-
-def cell_engine_g16(ctx):
-    '''Formula: =Inputs!G18+CHOOSE(Inputs!$B$22,0,0,$B$9)*G10.'''
-    return xl_add(xl_cell(ctx, 'Inputs!G18'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((0.0) if _t2 == 2 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10)))
-
-
-def cell_engine_c20(ctx):
-    '''Formula: =Inputs!B6*(1+(Inputs!C17+CHOOSE(Inputs!$B$22,0,$B$9,0)*C10)/100)/(1+(Inputs!C16+CHOOSE(Inputs!$B$22,$B$9,0,0)*C10)/100)-C16.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Inputs!B6', cell_inputs_b6), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!C17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10))), 100.0))), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!C16'), xl_mul((_t3 if isinstance((_t3 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t4 if isinstance((_t4 := to_int(_t3)), XlError) else XlError.VALUE if _t4 < 1 or _t4 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t4 == 1 else (((0.0) if _t4 == 2 else (((0.0) if _t4 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!C10', cell_engine_c10))), 100.0))), xl_eval(ctx, 'Engine!C16', cell_engine_c16))
-
-
-def cell_engine_d20(ctx):
-    '''Formula: =C20*(1+(Inputs!D17+CHOOSE(Inputs!$B$22,0,$B$9,0)*D10)/100)/(1+(Inputs!D16+CHOOSE(Inputs!$B$22,$B$9,0,0)*D10)/100)-D16.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!C20', cell_engine_c20), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!D17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10))), 100.0))), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!D16'), xl_mul((_t3 if isinstance((_t3 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t4 if isinstance((_t4 := to_int(_t3)), XlError) else XlError.VALUE if _t4 < 1 or _t4 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t4 == 1 else (((0.0) if _t4 == 2 else (((0.0) if _t4 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!D10', cell_engine_d10))), 100.0))), xl_eval(ctx, 'Engine!D16', cell_engine_d16))
-
-
-def cell_engine_e20(ctx):
-    '''Formula: =D20*(1+(Inputs!E17+CHOOSE(Inputs!$B$22,0,$B$9,0)*E10)/100)/(1+(Inputs!E16+CHOOSE(Inputs!$B$22,$B$9,0,0)*E10)/100)-E16.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!D20', cell_engine_d20), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!E17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10))), 100.0))), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!E16'), xl_mul((_t3 if isinstance((_t3 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t4 if isinstance((_t4 := to_int(_t3)), XlError) else XlError.VALUE if _t4 < 1 or _t4 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t4 == 1 else (((0.0) if _t4 == 2 else (((0.0) if _t4 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!E10', cell_engine_e10))), 100.0))), xl_eval(ctx, 'Engine!E16', cell_engine_e16))
-
-
-def cell_engine_f20(ctx):
-    '''Formula: =E20*(1+(Inputs!F17+CHOOSE(Inputs!$B$22,0,$B$9,0)*F10)/100)/(1+(Inputs!F16+CHOOSE(Inputs!$B$22,$B$9,0,0)*F10)/100)-F16.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!E20', cell_engine_e20), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!F17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10))), 100.0))), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!F16'), xl_mul((_t3 if isinstance((_t3 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t4 if isinstance((_t4 := to_int(_t3)), XlError) else XlError.VALUE if _t4 < 1 or _t4 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t4 == 1 else (((0.0) if _t4 == 2 else (((0.0) if _t4 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!F10', cell_engine_f10))), 100.0))), xl_eval(ctx, 'Engine!F16', cell_engine_f16))
-
-
-def cell_engine_g20(ctx):
-    '''Formula: =F20*(1+(Inputs!G17+CHOOSE(Inputs!$B$22,0,$B$9,0)*G10)/100)/(1+(Inputs!G16+CHOOSE(Inputs!$B$22,$B$9,0,0)*G10)/100)-G16.'''
-    return xl_sub(xl_div(xl_mul(xl_eval(ctx, 'Engine!F20', cell_engine_f20), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!G17'), xl_mul((_t1 if isinstance((_t1 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t2 if isinstance((_t2 := to_int(_t1)), XlError) else XlError.VALUE if _t2 < 1 or _t2 > 3 else ((0.0) if _t2 == 1 else (((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t2 == 2 else (((0.0) if _t2 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10))), 100.0))), xl_add(1.0, xl_div(xl_add(xl_cell(ctx, 'Inputs!G16'), xl_mul((_t3 if isinstance((_t3 := xl_cell(ctx, 'Inputs!B22')), XlError) else (_t4 if isinstance((_t4 := to_int(_t3)), XlError) else XlError.VALUE if _t4 < 1 or _t4 > 3 else ((xl_eval(ctx, 'Engine!B9', cell_engine_b9)) if _t4 == 1 else (((0.0) if _t4 == 2 else (((0.0) if _t4 == 3 else (XlError.VALUE)))))))), xl_eval(ctx, 'Engine!G10', cell_engine_g10))), 100.0))), xl_eval(ctx, 'Engine!G16', cell_engine_g16))
-
-
-def cell_outputs_b14(ctx):
-    '''Formula: =Engine!C20-Engine!C6.'''
-    return xl_sub(xl_eval(ctx, 'Engine!C20', cell_engine_c20), xl_eval(ctx, 'Engine!C6', cell_engine_c6))
-
-
-def cell_outputs_c14(ctx):
-    '''Formula: =Engine!D20-Engine!D6.'''
-    return xl_sub(xl_eval(ctx, 'Engine!D20', cell_engine_d20), xl_eval(ctx, 'Engine!D6', cell_engine_d6))
-
-
-def cell_outputs_d14(ctx):
-    '''Formula: =Engine!E20-Engine!E6.'''
-    return xl_sub(xl_eval(ctx, 'Engine!E20', cell_engine_e20), xl_eval(ctx, 'Engine!E6', cell_engine_e6))
-
-
-def cell_outputs_e14(ctx):
-    '''Formula: =Engine!F20-Engine!F6.'''
-    return xl_sub(xl_eval(ctx, 'Engine!F20', cell_engine_f20), xl_eval(ctx, 'Engine!F6', cell_engine_f6))
-
-
-def cell_outputs_f14(ctx):
-    '''Formula: =Engine!G20-Engine!G6.'''
-    return xl_sub(xl_eval(ctx, 'Engine!G20', cell_engine_g20), xl_eval(ctx, 'Engine!G6', cell_engine_g6))
-
-
-# --- Projection public address aliases ---
-
-def cell_outputs_b12(ctx):
-    return xl_eval(ctx, 'Engine!C6', cell_engine_c6)
-
-def cell_outputs_b13(ctx):
-    return xl_eval(ctx, 'Engine!C20', cell_engine_c20)
-
-def cell_outputs_c12(ctx):
-    return xl_eval(ctx, 'Engine!D6', cell_engine_d6)
-
-def cell_outputs_c13(ctx):
-    return xl_eval(ctx, 'Engine!D20', cell_engine_d20)
-
-def cell_outputs_d12(ctx):
-    return xl_eval(ctx, 'Engine!E6', cell_engine_e6)
-
-def cell_outputs_d13(ctx):
-    return xl_eval(ctx, 'Engine!E20', cell_engine_e20)
-
-def cell_outputs_e12(ctx):
-    return xl_eval(ctx, 'Engine!F6', cell_engine_f6)
-
-def cell_outputs_e13(ctx):
-    return xl_eval(ctx, 'Engine!F20', cell_engine_f20)
-
-def cell_outputs_f12(ctx):
-    return xl_eval(ctx, 'Engine!G6', cell_engine_g6)
-
-def cell_outputs_f13(ctx):
-    return xl_eval(ctx, 'Engine!G20', cell_engine_g20)
 
 # --- Formula resolver ---
 _RESOLVED_FORMULAS = {}
+_ADDRESS_DISPATCH = {
+    'Outputs!B12': ('baseline_debt', 'C'),
+    'Outputs!B13': ('debt_to_gdp', 'C'),
+    'Outputs!B14': ('output_delta', 'C'),
+    'Outputs!C12': ('baseline_debt', 'D'),
+    'Outputs!C13': ('debt_to_gdp', 'D'),
+    'Outputs!C14': ('output_delta', 'D'),
+    'Outputs!D12': ('baseline_debt', 'E'),
+    'Outputs!D13': ('debt_to_gdp', 'E'),
+    'Outputs!D14': ('output_delta', 'E'),
+    'Outputs!E12': ('baseline_debt', 'F'),
+    'Outputs!E13': ('debt_to_gdp', 'F'),
+    'Outputs!E14': ('output_delta', 'F'),
+    'Outputs!F12': ('baseline_debt', 'G'),
+    'Outputs!F13': ('debt_to_gdp', 'G'),
+    'Outputs!F14': ('output_delta', 'G'),
+}
+_SYMBOL_DISPATCH = {
+    'Engine!B9': 'shock_magnitude_resolved',
+    'Inputs!B6': 'initial_debt_to_gdp',
+}
+
 def _address_to_func_name(address):
     name = []
     prev_underscore = False
@@ -208,6 +238,25 @@ def _resolve_formula(address):
     fn = _RESOLVED_FORMULAS.get(address)
     if fn is not None:
         return fn
+    dispatch = _ADDRESS_DISPATCH.get(address)
+    if dispatch is not None:
+        helper_name, column = dispatch
+        helper = globals()[helper_name]
+
+        def _bound(ctx, _helper=helper, _column=column):
+            return _helper(ctx, _column)
+
+        _RESOLVED_FORMULAS[address] = _bound
+        return _bound
+    symbol_name = _SYMBOL_DISPATCH.get(address)
+    if symbol_name is not None:
+        helper = globals()[symbol_name]
+
+        def _bound(ctx, _helper=helper):
+            return _helper(ctx)
+
+        _RESOLVED_FORMULAS[address] = _bound
+        return _bound
     name = _address_to_func_name(address)
     fn = globals().get(name)
     if fn is not None:
