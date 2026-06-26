@@ -16,24 +16,25 @@ class CircularReferenceWarning(RuntimeWarning):
     """Warning emitted when a circular reference is encountered (default Excel mode)."""
 
 @dataclass(slots=True)
-class EvalContext:
-    """Per-run evaluation state for generated spreadsheets.
-
-    The exported-code path needs a mutable inputs mapping and a cache that is scoped
-    to a single compute call, so callers can run many scenarios without global state.
-    """
+class EvalContextBase:
+    """Per-run evaluation state without dependency-tracking fields."""
 
     inputs: dict[str, CellValue]
     resolver: Callable[[str], Callable[[EvalContext], CellValue] | None]
     cache: dict[str, CellValue] = field(default_factory=dict)
     computing: set[str] = field(default_factory=set)
-    deps: dict[str, set[str]] = field(default_factory=dict)
-    reverse_deps: dict[str, set[str]] = field(default_factory=dict)
-    stack: list[str] = field(default_factory=list)
     iterative_enabled: bool = False
     iterate_count: int = 100
     iterate_delta: float = 0.001
     iteration_values: dict[str, CellValue] = field(default_factory=dict)
+
+@dataclass(slots=True)
+class EvalContext(EvalContextBase):
+    """Per-run evaluation state with dependency tracking for input invalidation."""
+
+    deps: dict[str, set[str]] = field(default_factory=dict)
+    reverse_deps: dict[str, set[str]] = field(default_factory=dict)
+    stack: list[str] = field(default_factory=list)
 
     def _record_dependency(self, parent: str, child: str) -> None:
         if parent == child:
@@ -114,6 +115,31 @@ def _format_address(sheet: str, row: int, col: int) -> str:
     sheet_name = _quote_sheet_if_needed(sheet)
     col_letter = fastpyxl.utils.cell.get_column_letter(col)
     return f"{sheet_name}!{col_letter}{row}"
+
+def broadcast_pair(
+    left: CellValue,
+    right: CellValue,
+) -> tuple[np.ndarray, np.ndarray] | XlError:
+    """Broadcast scalar/array operands to matching object ndarrays."""
+    if isinstance(left, XlError):
+        return left
+    if isinstance(right, XlError):
+        return right
+    if isinstance(left, np.ndarray) and isinstance(right, np.ndarray):
+        if left.shape != right.shape:
+            return XlError.VALUE
+        return left, right
+    if isinstance(left, np.ndarray):
+        return left, np.full(left.shape, right, dtype=object)
+    if isinstance(right, np.ndarray):
+        return np.full(right.shape, left, dtype=object), right
+    raise TypeError("expected at least one ndarray operand")
+
+def _broadcast_pair(
+    left: CellValue,
+    right: CellValue,
+) -> tuple[np.ndarray, np.ndarray] | XlError:
+    return broadcast_pair(left, right)
 
 def datetime_to_excel_serial(value: datetime) -> float:
     """Convert a naive datetime to an Excel day serial (1900 date system)."""
@@ -378,6 +404,42 @@ def index_excel_range(
         return XlError.REF
     return abs_cell(row - 1, col - 1)
 
+def reference_arithmetic_array(
+    op: str,
+    arr_left: np.ndarray,
+    arr_right: np.ndarray,
+) -> np.ndarray | XlError:
+    """Element-wise arithmetic over broadcast object ndarrays (C-order, fail-fast)."""
+    result = np.empty(arr_left.shape, dtype=object)
+    for indices in np.ndindex(arr_left.shape):
+        ln = to_number(arr_left[indices])
+        rn = to_number(arr_right[indices])
+        if isinstance(ln, XlError):
+            return ln
+        if isinstance(rn, XlError):
+            return rn
+        if op == "+":
+            result[indices] = ln + rn
+        elif op == "-":
+            result[indices] = ln - rn
+        elif op == "*":
+            result[indices] = ln * rn
+        elif op == "/":
+            if rn == 0:
+                return XlError.DIV
+            result[indices] = ln / rn
+        elif op == "^":
+            try:
+                value = ln**rn
+            except (ValueError, OverflowError):
+                return XlError.NUM
+            if isinstance(value, complex):
+                return XlError.NUM
+            result[indices] = value
+        else:
+            raise ValueError(f"Unknown arithmetic operator: {op}")
+    return result
+
 def to_int(value: CellValue) -> int | XlError:
     """Coerce a CellValue to an integer using Excel-style numeric coercion.
 
@@ -402,7 +464,8 @@ def to_string(value: CellValue) -> str:
         return XlError.VALUE.value
     return str(value)
 
-def _xl_compare(op: str, left: CellValue, right: CellValue) -> bool | XlError:
+def compare_scalars(op: str, left: CellValue, right: CellValue) -> bool | XlError:
+    """Compare two scalar cell values using Excel coercion rules."""
     if isinstance(left, XlError):
         return left
     if isinstance(right, XlError):
@@ -448,18 +511,103 @@ def _xl_compare(op: str, left: CellValue, right: CellValue) -> bool | XlError:
 
     return _cmp_float(float(ln), float(rn))
 
-def xl_add(left: CellValue, right: CellValue) -> float | XlError:
+def _compare_scalars(op: str, left: CellValue, right: CellValue) -> bool | XlError:
+    return compare_scalars(op, left, right)
+
+def reference_compare_array(
+    op: str,
+    arr_left: np.ndarray,
+    arr_right: np.ndarray,
+) -> np.ndarray | XlError:
+    """Element-wise comparison over broadcast object ndarrays (C-order, fail-fast)."""
+    result = np.empty(arr_left.shape, dtype=object)
+    for indices in np.ndindex(arr_left.shape):
+        cell = compare_scalars(op, arr_left[indices], arr_right[indices])
+        if isinstance(cell, XlError):
+            return cell
+        result[indices] = cell
+    return result
+
+def try_fastpath_arithmetic_array(
+    op: str,
+    arr_left: np.ndarray,
+    arr_right: np.ndarray,
+) -> np.ndarray | XlError | None:
+    return None
+
+def _xl_arithmetic(
+    op: str,
+    left: CellValue,
+    right: CellValue,
+) -> CellValue:
     if isinstance(left, XlError):
         return left
     if isinstance(right, XlError):
         return right
+
+    if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
+        pair = _broadcast_pair(left, right)
+        if isinstance(pair, XlError):
+            return pair
+        arr_left, arr_right = pair
+        fast = try_fastpath_arithmetic_array(op, arr_left, arr_right)
+        if fast is not None:
+            return fast
+        return reference_arithmetic_array(op, arr_left, arr_right)
+
     ln = to_number(left)
     rn = to_number(right)
     if isinstance(ln, XlError):
         return ln
     if isinstance(rn, XlError):
         return rn
-    return ln + rn
+    if op == "+":
+        return ln + rn
+    if op == "-":
+        return ln - rn
+    if op == "*":
+        return ln * rn
+    if op == "/":
+        if rn == 0:
+            return XlError.DIV
+        return ln / rn
+    if op == "^":
+        try:
+            value = ln**rn
+        except (ValueError, OverflowError):
+            return XlError.NUM
+        if isinstance(value, complex):
+            return XlError.NUM
+        return value
+    raise ValueError(f"Unknown arithmetic operator: {op}")
+
+def try_fastpath_compare_array(
+    op: str,
+    arr_left: np.ndarray,
+    arr_right: np.ndarray,
+) -> np.ndarray | XlError | None:
+    return None
+
+def _xl_compare(op: str, left: CellValue, right: CellValue) -> CellValue:
+    if isinstance(left, XlError):
+        return left
+    if isinstance(right, XlError):
+        return right
+
+    if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
+        pair = _broadcast_pair(left, right)
+        if isinstance(pair, XlError):
+            return pair
+        arr_left, arr_right = pair
+        fast = try_fastpath_compare_array(op, arr_left, arr_right)
+        if fast is not None:
+            return fast
+        return reference_compare_array(op, arr_left, arr_right)
+
+    return _compare_scalars(op, left, right)
+
+def xl_add(left: CellValue, right: CellValue) -> CellValue:
+    return _xl_arithmetic("+", left, right)
 
 def xl_circular_reference() -> CellValue:
     """Excel default behavior for circular references (non-iterative calculation)."""
@@ -527,25 +675,10 @@ def xl_cell(ctx: EvalContext, address: str) -> CellValue:
             raise KeyError(f"Cell {address} not found in graph")
         return fn
 
-    # Excel treats "empty" formula results as 0 in most numeric contexts; the evaluator
-    # normalizes those Nones to 0. Structural blank-range cells intentionally stay None
-    # so INDEX/MATCH (and similar) see true empty cells in object arrays.
     return _evaluate_address(ctx, address, obtain_fn, preserve_structural_blank=True)
 
-def xl_div(left: CellValue, right: CellValue) -> float | XlError:
-    if isinstance(left, XlError):
-        return left
-    if isinstance(right, XlError):
-        return right
-    ln = to_number(left)
-    rn = to_number(right)
-    if isinstance(ln, XlError):
-        return ln
-    if isinstance(rn, XlError):
-        return rn
-    if rn == 0:
-        return XlError.DIV
-    return ln / rn
+def xl_div(left: CellValue, right: CellValue) -> CellValue:
+    return _xl_arithmetic("/", left, right)
 
 def xl_eval(
     ctx: EvalContext,
@@ -555,7 +688,7 @@ def xl_eval(
     """Evaluate a known formula implementation under the given context."""
     return _evaluate_address(ctx, address, lambda: fn, preserve_structural_blank=False)
 
-def xl_ge(left: CellValue, right: CellValue) -> bool | XlError:
+def xl_ge(left: CellValue, right: CellValue) -> CellValue:
     return _xl_compare(">=", left, right)
 
 def xl_index_ref(
@@ -620,18 +753,8 @@ def xl_match(
         return XlError.NA if last_match is None else last_match
     return XlError.VALUE
 
-def xl_mul(left: CellValue, right: CellValue) -> float | XlError:
-    if isinstance(left, XlError):
-        return left
-    if isinstance(right, XlError):
-        return right
-    ln = to_number(left)
-    rn = to_number(right)
-    if isinstance(ln, XlError):
-        return ln
-    if isinstance(rn, XlError):
-        return rn
-    return ln * rn
+def xl_mul(left: CellValue, right: CellValue) -> CellValue:
+    return _xl_arithmetic("*", left, right)
 
 def xl_offset(
     ctx: EvalContext,
@@ -721,15 +844,5 @@ def xl_range(ctx: EvalContext, address: str) -> CellValue:
     rng = ExcelRange(sheet, start_row, start_col_idx, end_row, end_col_idx)
     return rng.resolve(lambda addr: xl_cell(ctx, addr))
 
-def xl_sub(left: CellValue, right: CellValue) -> float | XlError:
-    if isinstance(left, XlError):
-        return left
-    if isinstance(right, XlError):
-        return right
-    ln = to_number(left)
-    rn = to_number(right)
-    if isinstance(ln, XlError):
-        return ln
-    if isinstance(rn, XlError):
-        return rn
-    return ln - rn
+def xl_sub(left: CellValue, right: CellValue) -> CellValue:
+    return _xl_arithmetic("-", left, right)
