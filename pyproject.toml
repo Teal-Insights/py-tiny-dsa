@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tiny-dsa"
 version = "0.1.0"
-description = "A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing debt-to-GDP ratio over a five-year horizon with one configurable shock."
+description = "A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing debt-to-GDP ratio over a five-year horizon with one configurable shock.\nCreated by Teal Insights.\n![Teal Insights logo](https://teal-insights.github.io/assets/logo.svg)"
 requires-python = ">=3.13"
 dependencies = [
     "fastpyxl",

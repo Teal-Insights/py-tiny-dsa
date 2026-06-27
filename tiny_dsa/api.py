@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .data import CONSTANTS, DEFAULT_INPUTS
 from .internals import _resolve_formula
+from ._api_helpers import Record, Records, Scalar, SeriesInput, _apply_series_records, _coerce_records, coerce_setter_input
 from .runtime import EvalContext, coerce_inputs_dict, xl_cell, xl_range
 import warnings
 
@@ -17,504 +18,6 @@ def make_context(inputs=None):
 
 # --- Series binding setters (Records API) ---
 
-# --- Setter input coercion (inlined from series_bindings) ---
-from collections.abc import Iterable, Mapping, Sequence
-from datetime import date, datetime, timedelta
-from typing import Any, Literal, TypeGuard, cast
-
-Layout = Literal["scalar", "series", "matrix"]
-SetterInput = object
-Scalar = object
-Record = dict[str, object]
-Records = list[Record]
-
-"""Coerce workbook and manifest values into series-binding scalars."""
-
-_EXCEL_EPOCH = datetime(1899, 12, 30)
-
-_BOOL_TRUE = frozenset({"true", "1", "yes"})
-
-_BOOL_FALSE = frozenset({"false", "0", "no"})
-
-_DATETIME_CLS = datetime
-
-_DATE_CLS = date
-
-def _ensure_naive_datetime(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    raise ValueError(f"Timezone-aware datetime values are not supported: {value!r}")
-
-def _normalize_date(value: date) -> datetime:
-    return datetime.combine(value, datetime.min.time())
-
-def _parse_iso_datetime(text: str) -> datetime:
-    stripped = text.strip()
-    if not stripped:
-        raise ValueError(f"Cannot coerce {text!r} to datetime")
-    if "T" in stripped or " " in stripped:
-        parsed = datetime.fromisoformat(stripped.replace("Z", "+00:00"))
-        return _ensure_naive_datetime(parsed)
-    return _normalize_date(date.fromisoformat(stripped))
-
-def _excel_serial_to_datetime(serial: float) -> datetime:
-    """Convert an Excel day-fraction serial to a naive datetime."""
-    return _EXCEL_EPOCH + timedelta(days=serial)
-
-def _coerce_datetime(raw: Any, *, excel_serial: bool) -> datetime:
-    if isinstance(raw, _DATETIME_CLS):
-        return _ensure_naive_datetime(raw)
-    if isinstance(raw, _DATE_CLS):
-        return _normalize_date(raw)
-    if isinstance(raw, str):
-        return _parse_iso_datetime(raw)
-    if excel_serial and isinstance(raw, (int, float)) and not isinstance(raw, bool):
-        return _excel_serial_to_datetime(float(raw))
-    raise ValueError(f"Cannot coerce {raw!r} to datetime")
-
-def _coerce_bool(raw: Any) -> bool:
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, int) and not isinstance(raw, bool):
-        if raw == 0:
-            return False
-        if raw == 1:
-            return True
-        raise ValueError(f"Cannot coerce {raw!r} to bool")
-    if isinstance(raw, float):
-        if raw == 0.0:
-            return False
-        if raw == 1.0:
-            return True
-        raise ValueError(f"Cannot coerce {raw!r} to bool")
-    text = str(raw).strip().lower()
-    if text in _BOOL_TRUE:
-        return True
-    if text in _BOOL_FALSE:
-        return False
-    raise ValueError(f"Cannot coerce {raw!r} to bool")
-
-def coerce_scalar(raw: Any, read_as: str) -> Scalar:
-    """Coerce a workbook or manifest value using an explicit or automatic read mode."""
-    if raw is None:
-        return None
-    if read_as == "auto":
-        if isinstance(raw, bool):
-            return raw
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            return raw
-        if isinstance(raw, float):
-            return raw
-        if isinstance(raw, str):
-            return raw
-        if isinstance(raw, _DATETIME_CLS):
-            return _ensure_naive_datetime(raw)
-        if isinstance(raw, _DATE_CLS):
-            return _normalize_date(raw)
-        return str(raw)
-    if read_as == "string":
-        return str(raw)
-    if read_as == "int":
-        return int(raw)
-    if read_as == "float":
-        return float(raw)
-    if read_as == "number":
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            return raw
-        return float(raw)
-    if read_as == "bool":
-        return _coerce_bool(raw)
-    if read_as == "datetime":
-        return _coerce_datetime(raw, excel_serial=True)
-    raise ValueError(f"Unknown read mode: {read_as!r}")
-
-def coerce_constant(value: Any, *, read_as: str) -> Scalar:
-    """Coerce a manifest constant using the effective read mode."""
-    return coerce_scalar(value, read_as)
-
-"""Coerce setter caller input into canonical record lists for series bindings."""
-
-def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
-    return isinstance(value, Mapping) and not isinstance(value, (str, bytes, bytearray))
-
-def _is_pandas_dataframe(data: object) -> bool:
-    cls = type(data)
-    module = cls.__module__
-    return cls.__name__ == "DataFrame" and (module == "pandas" or module.startswith("pandas."))
-
-def _is_polars_dataframe(data: object) -> bool:
-    cls = type(data)
-    return cls.__module__.startswith("polars.") and cls.__name__ == "DataFrame"
-
-def _is_tabular_dataframe(data: object) -> bool:
-    return _is_pandas_dataframe(data) or _is_polars_dataframe(data)
-
-def _import_pandas() -> Any:
-    try:
-        import pandas as pd
-    except ImportError as exc:
-        raise ImportError(
-            "DataFrame input requires pandas; install it or pass records / a 1D iterable"
-        ) from exc
-    return pd
-
-def _import_polars() -> Any:
-    try:
-        import polars as pl
-    except ImportError as exc:
-        raise ImportError(
-            "DataFrame input requires polars; install it or pass records / a 1D iterable"
-        ) from exc
-    return pl
-
-def _coerce_scalar_records(
-    data: object,
-    measure_field: str,
-) -> Records:
-    """Normalize scalar-layout setter input to a record list."""
-    if isinstance(data, list):
-        return cast(Records, data)
-    if _is_mapping(data):
-        return [dict(data)]
-    return [{measure_field: data}]
-
-def _is_records_list(data: Sequence[object]) -> TypeGuard[Records]:
-    if not data:
-        return True
-    return all(_is_mapping(item) for item in data)
-
-def _coerce_key_value(
-    field: str,
-    raw: object,
-    key_dtypes: Mapping[str, str] | None,
-) -> object:
-    if key_dtypes is None:
-        return raw
-    read_as = key_dtypes.get(field)
-    if read_as is None:
-        return raw
-    return coerce_scalar(raw, read_as)
-
-def _dataframe_column_names(data: object) -> list[str]:
-    columns = getattr(data, "columns", None)
-    if columns is None:
-        raise TypeError(f"unsupported DataFrame-like input: {type(data)!r}")
-    return [str(column) for column in columns]
-
-def _validate_dataframe_columns(
-    column_names: list[str],
-    *,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-    strict: bool,
-) -> None:
-    required = set(key_fields) | {measure_field}
-    present = set(column_names)
-    missing = sorted(required - present)
-    if missing:
-        raise ValueError(f"missing required column(s): {missing!r}")
-    if strict:
-        unknown = sorted(present - required)
-        if unknown:
-            raise ValueError(f"unknown columns {unknown!r}")
-
-def _row_dicts_from_dataframe(data: object) -> list[Record]:
-    if _is_pandas_dataframe(data):
-        pd = _import_pandas()
-        if not isinstance(data, pd.DataFrame):
-            raise ImportError(
-                "DataFrame input requires pandas; install it or pass records / a 1D iterable"
-            )
-        return data.to_dict(orient="records")
-    if _is_polars_dataframe(data):
-        pl = _import_polars()
-        if not isinstance(data, pl.DataFrame):
-            raise ImportError(
-                "DataFrame input requires polars; install it or pass records / a 1D iterable"
-            )
-        return data.to_dicts()
-    raise TypeError(f"unsupported DataFrame-like input: {type(data)!r}")
-
-def _apply_key_dtypes(
-    records: Records,
-    *,
-    key_fields: tuple[str, ...],
-    key_dtypes: Mapping[str, str] | None,
-) -> Records:
-    """Coerce key field values on each record using binding read modes."""
-    if not key_dtypes:
-        return records
-    coerced: list[dict[str, object]] = []
-    for record in records:
-        updated = dict(record)
-        for field in key_fields:
-            if field in updated:
-                updated[field] = _coerce_key_value(field, updated[field], key_dtypes)
-        coerced.append(updated)
-    return coerced
-
-def _coerce_dataframe_records(
-    data: object,
-    *,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-    strict: bool,
-) -> Records:
-    column_names = _dataframe_column_names(data)
-    _validate_dataframe_columns(
-        column_names,
-        key_fields=key_fields,
-        measure_field=measure_field,
-        strict=strict,
-    )
-    records: list[dict[str, object]] = []
-    for row in _row_dicts_from_dataframe(data):
-        record: dict[str, object] = {field: row[field] for field in key_fields}
-        record[measure_field] = row[measure_field]
-        records.append(record)
-    return records
-
-def _non_scalar_input_hint(
-    *,
-    layout: Layout,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-) -> str:
-    if layout == "matrix":
-        columns = ", ".join([*key_fields, measure_field])
-        return f"pass records or a tidy DataFrame with columns {columns!r}"
-    return "pass records, a 1D iterable of measure values, or a tidy DataFrame"
-
-def _unsupported_non_scalar_input_type_error(
-    data: object,
-    *,
-    layout: Layout,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-) -> TypeError:
-    hint = _non_scalar_input_hint(
-        layout=layout,
-        key_fields=key_fields,
-        measure_field=measure_field,
-    )
-    return TypeError(f"unsupported {layout} setter input type {type(data)!r}; {hint}")
-
-def _coerce_positional_records(
-    data: Iterable[object],
-    *,
-    layout: Layout,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-    key_order: tuple[object, ...],
-) -> Records:
-    if len(key_fields) != 1:
-        if layout == "matrix":
-            raise ValueError(
-                "positional measure values are not supported for matrix setters; "
-                "pass records or a tidy DataFrame"
-            )
-        raise ValueError(
-            "positional measure values require a single-key series binding; "
-            f"got key_fields={list(key_fields)!r}"
-        )
-    values = list(data)
-    if len(values) != len(key_order):
-        raise ValueError(
-            f"expected {len(key_order)} values for positional input, got {len(values)}"
-        )
-    key_field = key_fields[0]
-    return [
-        {key_field: key, measure_field: value} for key, value in zip(key_order, values, strict=True)
-    ]
-
-def _coerce_non_scalar_records(
-    data: SetterInput,
-    *,
-    layout: Layout,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-    key_order: tuple[object, ...] | None,
-    strict: bool,
-) -> Records:
-    """Normalize series/matrix setter input to records before key coercion."""
-    if _is_tabular_dataframe(data):
-        return _coerce_dataframe_records(
-            data,
-            key_fields=key_fields,
-            measure_field=measure_field,
-            strict=strict,
-        )
-
-    if _is_mapping(data):
-        return [dict(data)]
-
-    if isinstance(data, list):
-        if _is_records_list(data):
-            return data
-        if key_order is None:
-            raise ValueError("positional input requires key_order")
-        return _coerce_positional_records(
-            data,
-            layout=layout,
-            key_fields=key_fields,
-            measure_field=measure_field,
-            key_order=key_order,
-        )
-
-    if isinstance(data, (str, bytes, bytearray)):
-        raise _unsupported_non_scalar_input_type_error(
-            data,
-            layout=layout,
-            key_fields=key_fields,
-            measure_field=measure_field,
-        )
-
-    if isinstance(data, Iterable):
-        if key_order is None:
-            raise ValueError("positional input requires key_order")
-        return _coerce_positional_records(
-            data,
-            layout=layout,
-            key_fields=key_fields,
-            measure_field=measure_field,
-            key_order=key_order,
-        )
-
-    raise _unsupported_non_scalar_input_type_error(
-        data,
-        layout=layout,
-        key_fields=key_fields,
-        measure_field=measure_field,
-    )
-
-def coerce_setter_input(
-    data: SetterInput,
-    *,
-    layout: Layout,
-    key_fields: tuple[str, ...],
-    measure_field: str,
-    key_order: tuple[object, ...] | None,
-    strict: bool,
-    key_dtypes: Mapping[str, str] | None = None,
-) -> Records:
-    """Normalize caller input into records for ``_apply_series_records``.
-
-    Args:
-        data: Scalar value, record(s), 1D measure values, or tidy DataFrame.
-        layout: Binding layout (`scalar`, `series`, or `matrix`).
-        key_fields: Key column names from the binding manifest.
-        measure_field: Measure concept name (e.g. `OBS_VALUE`).
-        key_order: Canonical key values for positional measure iterables.
-        strict: When true, reject unknown DataFrame columns.
-        key_dtypes: Optional read modes per key field applied to all input shapes.
-
-    Returns:
-        List of record dicts ready for leaf resolution.
-
-    Raises:
-        ImportError: When a DataFrame-like value is passed but pandas/polars is missing.
-        TypeError: When the input shape is unsupported for the layout.
-        ValueError: When columns, keys, or positional lengths are invalid.
-    """
-    if layout == "scalar":
-        if _is_tabular_dataframe(data):
-            raise TypeError("scalar setters do not accept DataFrame input")
-        return _coerce_scalar_records(data, measure_field)
-
-    records = _coerce_non_scalar_records(
-        data,
-        layout=layout,
-        key_fields=key_fields,
-        measure_field=measure_field,
-        key_order=key_order,
-        strict=strict,
-    )
-    return _apply_key_dtypes(
-        records,
-        key_fields=key_fields,
-        key_dtypes=key_dtypes,
-    )
-
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
-
-Scalar = str | int | float | bool | None
-Record = dict[str, object]
-Records = list[Record]
-SeriesInput = Records | Record | Sequence[Scalar]
-
-if TYPE_CHECKING:
-    import pandas as pd
-    import polars as pl
-
-    SeriesInput = Records | Record | Sequence[Scalar] | pd.DataFrame | pl.DataFrame
-else:
-    SeriesInput = Records | Record | Sequence[Scalar] | object
-
-def _coerce_records(records, measure_field, *, allow_scalar=False) -> Records:
-    if not allow_scalar:
-        return records
-    if not isinstance(records, list):
-        if isinstance(records, dict):
-            return [records]
-        return [{measure_field: records}]
-    return records
-
-def _apply_series_records(
-    ctx,
-    records,
-    *,
-    key_fields,
-    allowed_fields,
-    measure_field,
-    leaf_index,
-    strict,
-    fn_name,
-    allow_address=False,
-    requires_address=False,
-) -> None:
-    updates: dict[str, object] = {}
-    first_record_by_address: dict[str, int] = {}
-    for index, record in enumerate(records):
-        if strict:
-            unknown = set(record) - allowed_fields
-            if unknown:
-                raise ValueError(f"record[{index}]: unknown fields {sorted(unknown)!r}")
-        if measure_field not in record:
-            raise ValueError(f"record[{index}]: missing required field {measure_field!r}")
-        address = None
-        key_tuple = None
-        if allow_address or requires_address:
-            address = record.get("address") or record.get("cell_address")
-        if requires_address and address is None:
-            raise ValueError(
-                f"record[{index}]: address required for {fn_name} (duplicate keys in binding)"
-            )
-        if address is None:
-            if not requires_address:
-                missing = [field for field in key_fields if field not in record]
-                if missing:
-                    raise ValueError(f"record[{index}]: missing key fields {missing!r}")
-                key_tuple = tuple((field, record[field]) for field in key_fields)
-                address = leaf_index.get(key_tuple)
-                if address is None:
-                    raise ValueError(
-                        f"record[{index}]: no leaf matches key {dict(key_tuple)!r}"
-                    )
-        elif not requires_address and all(field in record for field in key_fields):
-            key_tuple = tuple((field, record[field]) for field in key_fields)
-        if address in updates:
-            prior = first_record_by_address[address]
-            if key_tuple is not None:
-                detail = f"duplicate key {dict(key_tuple)!r} matches record[{prior}]"
-            else:
-                detail = f"duplicate cell {address!r} matches record[{prior}]"
-            raise ValueError(f"record[{index}]: {detail}")
-        first_record_by_address[address] = index
-        updates[address] = record[measure_field]
-    if updates:
-        ctx.set_inputs(coerce_inputs_dict(updates))
-
 _LEAF_INDEX_COUNTRY_NAME = {
     (): 'Inputs!B5',
 }
@@ -525,17 +28,17 @@ def set_country_name(
     *,
     strict: bool = True,
 ) -> None:
-    """Set the country name in the workbook.
+    """Set the selected country name for the Tiny-DSA scenario.
 
-    Updates the country name cell (Inputs!B5) to the provided value.
-    Each record writes its OBS_VALUE to the country_name named range.
+    Updates the country-name input used by the workbook to derive the active country profile.
+    Because this series has no dimensions, the supplied scalar record maps to the single country-name input cell.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (Scalar | Record | Records): A bare scalar value, a single record dict, or a list of records.
             Required record fields:
-                - OBS_VALUE: The country name to set in the workbook.
+                - OBS_VALUE: User-selected country name for the scenario, used by the workbook's country-profile lookup.
             Optional record fields:
-                - PARAMETER: Identifies the parameter being set. If supplied, expected value: "country_name".
+                - PARAMETER: Optional context attribute identifying the workbook parameter described by the record. If supplied, expected value: "country_name".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -546,9 +49,7 @@ def set_country_name(
         Value type: string
 
     Examples:
-        set_country_name(ctx, [
-            {'OBS_VALUE': 'Borvelia'},
-        ])
+        set_country_name(ctx, 'Borvelia')
     """
     _apply_series_records(
         ctx,
@@ -577,19 +78,19 @@ def set_country_initial_debt(
     *,
     strict: bool = True,
 ) -> None:
-    """Set country initial debt-to-GDP values in the profile lookup table.
+    """Set the country profile table's initial debt-to-GDP series.
 
-    Updates the initial general-government debt-to-GDP ratios for countries in the Inputs sheet.
-    Each record maps to a row in the country profile table, matched on the COUNTRY key.
+    Updates the initial debt-to-GDP values used by the country lookup table.
+    Each record is matched to a country row label in the profile table, and its observation value is written to that row's initial-debt cell.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (SeriesInput): A list of records, a single record dict, a tidy pandas/polars DataFrame, or a 1-D iterable of measure values in key order.
             Required record fields:
-                - COUNTRY: Name of the country for which the initial debt value is being set.
-                - OBS_VALUE: Initial general-government debt-to-GDP ratio, in percent of GDP.
+                - COUNTRY: Country profile row to update.
+                - OBS_VALUE: Initial debt-to-GDP ratio for the country profile entry.
             Optional record fields:
-                - INDICATOR: The economic indicator that the observation values represent. If supplied, expected value: "initial_debt_to_gdp".
-                - UNIT_MEASURE: The unit of measure for the observation values. If supplied, expected value: "PC_GDP".
+                - INDICATOR: Identifies the series as the initial-debt indicator. If supplied, expected value: "initial_debt_to_gdp".
+                - UNIT_MEASURE: Identifies the unit used for the debt-ratio observation. If supplied, expected value: "PC_GDP".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -604,6 +105,8 @@ def set_country_initial_debt(
             {'COUNTRY': 'Borvelia', 'OBS_VALUE': 60.0},
             {'COUNTRY': 'Litellia', 'OBS_VALUE': 80.0},
         ])
+
+        set_country_initial_debt(ctx, [60.0, 80.0])
     """
     _apply_series_records(
         ctx,
@@ -642,19 +145,19 @@ def set_growth_baseline(
     *,
     strict: bool = True,
 ) -> None:
-    """Set baseline real GDP growth rates for projection years 1 through 5.
+    """Set the baseline real GDP growth path for the projection horizon.
 
-    Updates the growth_baseline range on the Inputs sheet with provided records.
-    Each record is identified by TIME_PERIOD; OBS_VALUE is written to the corresponding cell in Inputs!C16:G16.
+    Updates the baseline real GDP growth assumptions used by the debt-dynamics recursion.
+    Records are keyed by projection year, with each observation written to the matching year cell in the series.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (SeriesInput): A list of records, a single record dict, a tidy pandas/polars DataFrame, or a 1-D iterable of measure values in key order.
             Required record fields:
-                - TIME_PERIOD: The projection year (1 through 5) for which the growth rate applies.
-                - OBS_VALUE: The baseline real GDP growth rate, expressed in percent per annum.
+                - TIME_PERIOD: Projection year identifying the position in the baseline path.
+                - OBS_VALUE: Baseline real GDP growth rate for the projection year.
             Optional record fields:
-                - INDICATOR: The indicator code for the series. If supplied, expected value: "real_gdp_growth".
-                - UNIT_MEASURE: The unit of measure for the observation values. If supplied, expected value: "PERCENT_PER_ANNUM".
+                - INDICATOR: Identifies the macroeconomic series represented by the record. If supplied, expected value: "real_gdp_growth".
+                - UNIT_MEASURE: Indicates the measurement unit used for the growth observation. If supplied, expected value: "PERCENT_PER_ANNUM".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -669,6 +172,8 @@ def set_growth_baseline(
             {'TIME_PERIOD': 1, 'OBS_VALUE': 3.5},
             {'TIME_PERIOD': 2, 'OBS_VALUE': 3.5},
         ])
+
+        set_growth_baseline(ctx, [3.5, 3.5])
     """
     _apply_series_records(
         ctx,
@@ -707,19 +212,19 @@ def set_interest_baseline(
     *,
     strict: bool = True,
 ) -> None:
-    """Set baseline real interest rates for projection years 1 through 5.
+    """Set the baseline real interest-rate path for the projection horizon.
 
-    Updates the baseline real interest rate path in the Inputs sheet.
-    Each record corresponds to a year in the range Inputs!C17:G17, with TIME_PERIOD mapping to the year column and OBS_VALUE to the rate value.
+    Updates the real interest-rate assumptions used in Tiny-DSA's baseline debt recursion.
+    Records are matched by projection year to the corresponding columns in the workbook series.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (SeriesInput): A list of records, a single record dict, a tidy pandas/polars DataFrame, or a 1-D iterable of measure values in key order.
             Required record fields:
-                - TIME_PERIOD: Projection year.
-                - OBS_VALUE: Observation value.
+                - TIME_PERIOD: Projection year identifying the position in the baseline interest-rate path.
+                - OBS_VALUE: Effective real interest rate paid on outstanding general-government debt during the year, used in the real-terms snowball factor.
             Optional record fields:
-                - INDICATOR: The series indicator, identifying this as the real interest rate. If supplied, expected value: "real_interest_rate".
-                - UNIT_MEASURE: The unit of measurement, indicating percent per annum. If supplied, expected value: "PERCENT_PER_ANNUM".
+                - INDICATOR: Identifies the macroeconomic indicator represented by the series. If supplied, expected value: "real_interest_rate".
+                - UNIT_MEASURE: Identifies the unit convention for the observation value. If supplied, expected value: "PERCENT_PER_ANNUM".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -734,6 +239,8 @@ def set_interest_baseline(
             {'TIME_PERIOD': 1, 'OBS_VALUE': 4.0},
             {'TIME_PERIOD': 2, 'OBS_VALUE': 4.0},
         ])
+
+        set_interest_baseline(ctx, [4.0, 4.0])
     """
     _apply_series_records(
         ctx,
@@ -772,19 +279,19 @@ def set_primary_balance_baseline(
     *,
     strict: bool = True,
 ) -> None:
-    """Set the baseline primary balance trajectory for all five projection years.
+    """Set the baseline primary-balance path for the projection horizon.
 
-    Updates the primary balance baseline values in the Inputs sheet, which are used to compute the baseline debt-to-GDP path.
-    Each record corresponds to one projection year in the five-year horizon, identified by TIME_PERIOD.
+    Updates the exogenous fiscal-stance series used in the baseline debt-to-GDP recursion.
+    Records are matched by projection year to the corresponding cell in the baseline primary-balance series.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (SeriesInput): A list of records, a single record dict, a tidy pandas/polars DataFrame, or a 1-D iterable of measure values in key order.
             Required record fields:
-                - TIME_PERIOD: Projection year in the five-year horizon, ranging from 1 to 5.
-                - OBS_VALUE: Primary balance for the projection year, expressed as a percent of GDP. Positive values indicate a surplus.
+                - TIME_PERIOD: Projection year identifying the baseline horizon cell for the observation.
+                - OBS_VALUE: Primary balance for the projection year; positive values denote a surplus and negative values denote a deficit.
             Optional record fields:
-                - INDICATOR: Identifies the series as the primary balance baseline. If supplied, expected value: "primary_balance".
-                - UNIT_MEASURE: Specifies the unit of measure as percent of GDP. If supplied, expected value: "PC_GDP".
+                - INDICATOR: Indicator identifying which baseline parameter series the record belongs to. If supplied, expected value: "primary_balance".
+                - UNIT_MEASURE: Unit of measure associated with the primary-balance observation. If supplied, expected value: "PC_GDP".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -799,6 +306,8 @@ def set_primary_balance_baseline(
             {'TIME_PERIOD': 1, 'OBS_VALUE': -1.0},
             {'TIME_PERIOD': 2, 'OBS_VALUE': -0.5},
         ])
+
+        set_primary_balance_baseline(ctx, [-1.0, -0.5])
     """
     _apply_series_records(
         ctx,
@@ -831,17 +340,17 @@ def set_shock_year(
     *,
     strict: bool = True,
 ) -> None:
-    """Set the shock start year for the debt projection.
+    """Set the shock-year input for the Tiny-DSA scenario.
 
-    Updates the first projection year in which the configured shock applies.
-    The record's OBS_VALUE is written to the scalar cell Inputs!B21.
+    Updates the first projection year in which the selected shock begins and applies through the remaining horizon.
+    Because this is a scalar input, the supplied observation maps to the single shock-year workbook cell.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (Scalar | Record | Records): A bare scalar value, a single record dict, or a list of records.
             Required record fields:
-                - OBS_VALUE: The first year, counted from the start of the projection horizon, when the shock takes effect.
+                - OBS_VALUE: Shock-year measure indicating the first projection year in which the selected shock takes effect.
             Optional record fields:
-                - PARAMETER: Identifies the parameter as the shock year configuration. If supplied, expected value: "shock_year".
+                - PARAMETER: Optional parameter attribute identifying the record as part of the shock-year input. If supplied, expected value: "shock_year".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -852,9 +361,7 @@ def set_shock_year(
         Value type: int
 
     Examples:
-        set_shock_year(ctx, [
-            {'OBS_VALUE': 2},
-        ])
+        set_shock_year(ctx, 2)
     """
     _apply_series_records(
         ctx,
@@ -879,17 +386,17 @@ def set_shock_type(
     *,
     strict: bool = True,
 ) -> None:
-    """Set the shock type for the debt sustainability scenario.
+    """Set the shock type used by Tiny-DSA's shock configuration.
 
-    Updates the workbook’s shock type to the supplied integer code.
-    A single record provides the shock type value that is written to the workbook’s shock type cell.
+    Updates the scalar input that determines which baseline parameter receives the configured shock.
+    Because this is a scalar input, the supplied record maps directly to the single shock type cell.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (Scalar | Record | Records): A bare scalar value, a single record dict, or a list of records.
             Required record fields:
-                - OBS_VALUE: Integer code specifying which parameter the shock affects: 1 for real GDP growth, 2 for real interest rate, 3 for primary balance.
+                - OBS_VALUE: Integer code identifying which parameter is affected by the configured shock.
             Optional record fields:
-                - PARAMETER: Identifies the measure as the shock type parameter. If supplied, expected value: "shock_type".
+                - PARAMETER: Optional parameter attribute identifying the shock-configuration input represented by the record. If supplied, expected value: "shock_type".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -900,9 +407,7 @@ def set_shock_type(
         Value type: int
 
     Examples:
-        set_shock_type(ctx, [
-            {'OBS_VALUE': 1},
-        ])
+        set_shock_type(ctx, 1)
     """
     _apply_series_records(
         ctx,
@@ -931,19 +436,19 @@ def set_shock_magnitudes(
     *,
     strict: bool = True,
 ) -> None:
-    """Set the shock magnitudes for the three shock types (growth, interest, primary balance).
+    """Set shock magnitudes by affected macro-fiscal parameter.
 
-    Updates the shock magnitude values in the shock table for each affected parameter.
-    Each record maps to a cell in the shock table, with SHOCK_PARAMETER identifying the column and OBS_VALUE setting the magnitude.
+    Updates the shock table values used to configure the single active shock scenario.
+    Records are matched by SHOCK_PARAMETER to the corresponding shock-table column.
 
     Args:
-        records (Records): Records to apply to the workbook inputs.
+        records (SeriesInput): A list of records, a single record dict, a tidy pandas/polars DataFrame, or a 1-D iterable of measure values in key order.
             Required record fields:
-                - SHOCK_PARAMETER: Identifies which shock parameter the magnitude applies to.
-                - OBS_VALUE: The magnitude of the shock in percentage points.
+                - SHOCK_PARAMETER: Affected parameter associated with a shock magnitude.
+                - OBS_VALUE: Magnitude applied to the affected parameter when that shock is selected.
             Optional record fields:
-                - PARAMETER: Indicates the series parameter type, constant across all records. If supplied, expected value: "shock_magnitude".
-                - UNIT_MEASURE: Specifies the unit of measurement for the shock magnitude. If supplied, expected value: "PP".
+                - PARAMETER: Identifies the parameter series represented by the record when included. If supplied, expected value: "shock_magnitude".
+                - UNIT_MEASURE: Indicates the unit used for the shock magnitude when included. If supplied, expected value: "PP".
 
     Returns:
         None: Applies the input updates to ctx.
@@ -958,6 +463,8 @@ def set_shock_magnitudes(
             {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': -2.0},
             {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 2.0},
         ])
+
+        set_shock_magnitudes(ctx, [-2.0, 2.0])
     """
     _apply_series_records(
         ctx,
@@ -982,7 +489,7 @@ def set_shock_magnitudes(
 
 # --- Series binding output compute (Records API) ---
 
-_OUTPUT_LEAVES_OUTPUT_BASELINE = [
+_OUTPUT_LEAVES_OUTPUT_BASELINE: list[tuple[str, Record]] = [
     ('Outputs!B12', {'SCENARIO': 'baseline', 'TIME_PERIOD': 1, 'UNIT_MEASURE': 'PC_GDP'}),
     ('Outputs!C12', {'SCENARIO': 'baseline', 'TIME_PERIOD': 2, 'UNIT_MEASURE': 'PC_GDP'}),
     ('Outputs!D12', {'SCENARIO': 'baseline', 'TIME_PERIOD': 3, 'UNIT_MEASURE': 'PC_GDP'}),
@@ -991,10 +498,10 @@ _OUTPUT_LEAVES_OUTPUT_BASELINE = [
 ]
 
 def compute_output_baseline(ctx=None, *, inputs=None) -> Records:
-    """Compute the baseline debt-to-GDP path over the five-year projection horizon.
+    """Compute the baseline debt-to-GDP output path.
 
-    Return the baseline debt-to-GDP ratio for each projection year as a list of records.
-    Records correspond to cells in the Outputs!B12:F12 range, with TIME_PERIOD indexing the projection year.
+    Returns the Outputs-sheet baseline trajectory computed from the baseline macroeconomic and fiscal assumptions.
+    Each record corresponds to one projection-year cell in the output series, keyed by projection year.
 
     Args:
         ctx (EvalContext | None): Existing evaluation context, if available.
@@ -1003,11 +510,11 @@ def compute_output_baseline(ctx=None, *, inputs=None) -> Records:
     Returns:
         Records: Computed output records.
             Required record fields:
-                - TIME_PERIOD: Projection year.
-                - OBS_VALUE: Baseline debt-to-GDP ratio expressed as a percentage of GDP.
+                - TIME_PERIOD: Projection year in the five-year horizon.
+                - OBS_VALUE: Baseline general-government debt-to-GDP ratio for the projection year.
             Optional record fields:
-                - SCENARIO: Scenario classification for the debt path. If supplied, expected value: "baseline".
-                - UNIT_MEASURE: Unit of measure for the observation value. If supplied, expected value: "PC_GDP".
+                - SCENARIO: Identifies which trajectory the record belongs to. If supplied, expected value: "baseline".
+                - UNIT_MEASURE: Indicates the unit used to express the debt ratio. If supplied, expected value: "PC_GDP".
 
     Source binding:
         Workbook range: Outputs!B12:F12
@@ -1032,7 +539,7 @@ def compute_output_baseline(ctx=None, *, inputs=None) -> Records:
         records.append(record)
     return records
 
-_OUTPUT_LEAVES_OUTPUT_SHOCKED = [
+_OUTPUT_LEAVES_OUTPUT_SHOCKED: list[tuple[str, Record]] = [
     ('Outputs!B13', {'SCENARIO': 'shocked', 'TIME_PERIOD': 1, 'UNIT_MEASURE': 'PC_GDP'}),
     ('Outputs!C13', {'SCENARIO': 'shocked', 'TIME_PERIOD': 2, 'UNIT_MEASURE': 'PC_GDP'}),
     ('Outputs!D13', {'SCENARIO': 'shocked', 'TIME_PERIOD': 3, 'UNIT_MEASURE': 'PC_GDP'}),
@@ -1041,10 +548,10 @@ _OUTPUT_LEAVES_OUTPUT_SHOCKED = [
 ]
 
 def compute_output_shocked(ctx=None, *, inputs=None) -> Records:
-    """Return the shocked debt-to-GDP path for projection years 1 through 5.
+    """Compute the shocked debt-to-GDP output path by projection year.
 
-    Returns a list of records, each containing the debt-to-GDP ratio for a given year under the shocked scenario.
-    Each record corresponds to one cell in the Outputs!B13:F13 range, with the year from column headers in row 11.
+    Returns the shocked debt-to-GDP trajectory exposed on the Outputs sheet.
+    Each record corresponds to one projection-year output cell in the shocked path.
 
     Args:
         ctx (EvalContext | None): Existing evaluation context, if available.
@@ -1053,11 +560,11 @@ def compute_output_shocked(ctx=None, *, inputs=None) -> Records:
     Returns:
         Records: Computed output records.
             Required record fields:
-                - TIME_PERIOD: Projection year.
-                - OBS_VALUE: Debt-to-GDP ratio (percent of GDP) under the shocked scenario.
+                - TIME_PERIOD: Projection year in the five-year horizon.
+                - OBS_VALUE: Projected gross general-government debt-to-GDP ratio for the shocked path.
             Optional record fields:
-                - SCENARIO: Scenario classification. If supplied, expected value: "shocked".
-                - UNIT_MEASURE: Unit of measure for the observation value. If supplied, expected value: "PC_GDP".
+                - SCENARIO: Scenario label identifying the shocked trajectory. If supplied, expected value: "shocked".
+                - UNIT_MEASURE: Unit used to express the debt-to-GDP ratio. If supplied, expected value: "PC_GDP".
 
     Source binding:
         Workbook range: Outputs!B13:F13
@@ -1082,7 +589,7 @@ def compute_output_shocked(ctx=None, *, inputs=None) -> Records:
         records.append(record)
     return records
 
-_OUTPUT_LEAVES_OUTPUT_DELTA = [
+_OUTPUT_LEAVES_OUTPUT_DELTA: list[tuple[str, Record]] = [
     ('Outputs!B14', {'SCENARIO': 'shocked_minus_baseline', 'TIME_PERIOD': 1, 'UNIT_MEASURE': 'PP'}),
     ('Outputs!C14', {'SCENARIO': 'shocked_minus_baseline', 'TIME_PERIOD': 2, 'UNIT_MEASURE': 'PP'}),
     ('Outputs!D14', {'SCENARIO': 'shocked_minus_baseline', 'TIME_PERIOD': 3, 'UNIT_MEASURE': 'PP'}),
@@ -1091,10 +598,10 @@ _OUTPUT_LEAVES_OUTPUT_DELTA = [
 ]
 
 def compute_output_delta(ctx=None, *, inputs=None) -> Records:
-    """Compute the difference between the shocked and baseline debt-to-GDP paths as a time series.
+    """Compute the output delta series comparing the shocked and baseline debt-to-GDP paths.
 
-    Returns the year-by-year difference in percentage points between the shocked and baseline debt-to-GDP projections.
-    Each record corresponds to a cell in the Outputs!B14:F14 row, with TIME_PERIOD taken from the column headers in row 11 and OBS_VALUE from the cell content.
+    Returns the five-year difference between the shocked and baseline debt-to-GDP trajectories.
+    Each record corresponds to one projection-year cell in the output delta row, with the column header identifying the year.
 
     Args:
         ctx (EvalContext | None): Existing evaluation context, if available.
@@ -1103,11 +610,11 @@ def compute_output_delta(ctx=None, *, inputs=None) -> Records:
     Returns:
         Records: Computed output records.
             Required record fields:
-                - TIME_PERIOD: Projection year, from 1 to 5.
-                - OBS_VALUE: Difference between the shocked and baseline debt-to-GDP ratio, expressed in percentage points of GDP.
+                - TIME_PERIOD: Projection year in the five-year horizon.
+                - OBS_VALUE: Difference between the shocked and baseline debt-to-GDP paths for the projection year.
             Optional record fields:
-                - SCENARIO: Scenario identifier for this series, indicating the shocked-minus-baseline difference. If supplied, expected value: "shocked_minus_baseline".
-                - UNIT_MEASURE: Unit of measurement for the observation value. If supplied, expected value: "PP".
+                - SCENARIO: Identifies the comparison scenario represented by the series. If supplied, expected value: "shocked_minus_baseline".
+                - UNIT_MEASURE: Provides the unit metadata for the delta values. If supplied, expected value: "PP".
 
     Source binding:
         Workbook range: Outputs!B14:F14
