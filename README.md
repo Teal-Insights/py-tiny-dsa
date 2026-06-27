@@ -14,6 +14,6 @@ See the [full documentation](https://teal-insights.github.io/py-tiny-dsa/).
 
 Created by Teal Insights.
 
-![Teal Insights logo](README_files/logo.svg)
+![Teal Insights logo](README_files/logo.png)
 
 
