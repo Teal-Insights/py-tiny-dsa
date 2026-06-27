@@ -7,9 +7,9 @@ from .runtime import EvalContext, coerce_inputs_dict, xl_cell, xl_range
 import warnings
 
 
-def make_context(inputs=None):
+def make_context(inputs: dict[str, object] | None = None) -> EvalContext:
     """Create an EvalContext with merged inputs."""
-    merged = dict(DEFAULT_INPUTS)
+    merged: dict[str, object] = dict(DEFAULT_INPUTS)
     merged.update(CONSTANTS)
     if inputs is not None:
         merged.update(inputs)
@@ -640,6 +640,16 @@ def compute_output_delta(ctx=None, *, inputs=None) -> Records:
     return records
 
 
+def list_setters() -> list[str]:
+    """Return generated series-binding setter function names."""
+    return ['set_country_initial_debt', 'set_country_name', 'set_growth_baseline', 'set_interest_baseline', 'set_primary_balance_baseline', 'set_shock_magnitudes', 'set_shock_type', 'set_shock_year']
+
+
+def list_computes() -> list[str]:
+    """Return generated series-binding compute function names."""
+    return ['compute_output_baseline', 'compute_output_delta', 'compute_output_shocked']
+
+
 TARGETS = {
     'Outputs!B12:Outputs!F12': xl_range,
     'Outputs!B13:Outputs!F13': xl_range,
@@ -647,7 +657,7 @@ TARGETS = {
 }
 
 
-def compute_all(ctx=None, *, inputs=None):
+def compute_all(ctx: EvalContext | None = None, *, inputs: dict[str, object] | None = None) -> dict[str, object]:
     """Compute all target cells and return results."""
     if ctx is None:
         ctx = make_context(inputs)
