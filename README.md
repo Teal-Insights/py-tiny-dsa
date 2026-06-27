@@ -4,7 +4,7 @@ A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustaina
 
 Created by Teal Insights.
 
-![Teal Insights logo]([README_files/logo-teal-insights.png)
+![Teal Insights logo](README_files/logo-teal-insights.png)
 
 ## Installation
 
