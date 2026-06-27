@@ -2,81 +2,76 @@
 title: "Functional overview"
 ---
 
+Tiny-DSA separates the workflow into three conceptual surfaces: inputs, calculations, and outputs. In Python, you work with these surfaces through a scenario context created by `make_context()`, scenario setters named `set_*`, and output readers named `compute_output_*`.
+
+The public API replaces workbook navigation. Configure the editable inputs with setters, let the library evaluate the debt paths, and read the stable output records with `compute_output_baseline`, `compute_output_shocked`, and `compute_output_delta`. External code should consume these output functions rather than depending on internal calculation ranges.
+
 ### A. API management rules
 
-Tiny-DSA is configured through a Python evaluation context rather than through workbook sheets. The workflow is:
+The workbook formatting rules map to API boundaries in Python:
 
-1. Create a scenario context with `make_context()`.
-2. Write user-editable assumptions with `set_*` functions.
-3. Read calculated results with `compute_output_*` functions.
-4. Convert returned records into analysis tables with Polars.
+- User-editable inputs are the public `set_*` functions. Use them to specify the country, baseline assumptions, shock year, shock type, and shock magnitudes.
+- Country profile data is lookup data selected through `set_country_name`. Treat it as read-only in normal scenario runs.
+- Calculated outputs are returned by `compute_output_*` functions. Treat the returned records as read-only results.
+- Labels and intermediate calculations are not part of the public workflow for downstream code.
 
-The original workbook separated **Inputs**, **Engine**, and **Outputs**. In the Python API, the same separation is reflected as a public contract:
+Numerical display formatting is handled by your analysis layer. Output records include `OBS_VALUE` and may include fields such as `TIME_PERIOD`, `SCENARIO`, and `UNIT_MEASURE`. For tabular display, convert records to a Polars DataFrame, sort by `TIME_PERIOD`, and select `OBS_VALUE` with a clear column alias.
 
-- Scenario inputs are written only through setters such as `set_country_name`, `set_growth_baseline`, and `set_shock_year`.
-- Built-in country-profile data is selected through the country name supplied to `set_country_name`.
-- Calculated debt paths are exposed through `compute_output_baseline`, `compute_output_shocked`, and `compute_output_delta`.
-- External code should read the output compute functions rather than depend on internal workbook ranges.
+Use workbook-compatible input constraints when configuring scenarios:
 
-Valid scenarios follow the model constraints used by the original workbook: the country name is one of `Borvelia`, `Litellia`, or `Aurelium`; `shock_year` is an integer from 1 through 5; and `shock_type` is 1, 2, or 3.
+- Country name: one of the preloaded profile names.
+- Shock year: integer from `1` through `5`.
+- Shock type: integer from `1` through `3`.
 
-The public Python surface is:
+The public Python surface corresponding to the stable workbook contract is:
 
-| Python symbol | Role |
-|---|---|
-| `make_context` | Create a scenario context populated with default inputs and constants |
-| `set_country_name` | Select the active country profile |
-| `set_growth_baseline` | Set the five-year real GDP growth path |
-| `set_interest_baseline` | Set the five-year real interest-rate path |
-| `set_primary_balance_baseline` | Set the five-year primary-balance path |
-| `set_shock_year` | Set the first year in which the shock takes effect |
-| `set_shock_type` | Select the affected parameter: 1 for growth, 2 for interest, 3 for primary balance |
-| `set_shock_magnitudes` | Set the shock magnitudes by affected parameter |
-| `compute_output_baseline` | Return the baseline debt-to-GDP output path |
-| `compute_output_shocked` | Return the shocked debt-to-GDP output path |
-| `compute_output_delta` | Return the shocked-minus-baseline difference |
-
-Single-value setters accept a scalar. Series setters accept a 1-D sequence in horizon order, a tidy Polars DataFrame, or records. Records are usually clearest when the series is keyed by a label, such as `SHOCK_PARAMETER` in the shock-magnitude table.
+| Python API | Source concept | Description |
+|---|---|---|
+| `make_context` | Active scenario state | Creates a scenario context initialized with library defaults. |
+| `set_country_name` | `country_name` | Selects the active country profile. |
+| `set_growth_baseline` | `growth_baseline` | Sets real GDP growth rates for projection years 1 through 5. |
+| `set_interest_baseline` | `interest_baseline` | Sets real interest rates for projection years 1 through 5. |
+| `set_primary_balance_baseline` | `primary_balance_baseline` | Sets the primary-balance path for projection years 1 through 5. |
+| `set_shock_year` | `shock_year` | Sets the first year in which the shock applies. |
+| `set_shock_type` | `shock_type` | Selects the affected parameter: growth, interest, or primary balance. |
+| `set_shock_magnitudes` | `shock_table` | Sets the per-parameter shock magnitudes. |
+| `compute_output_baseline` | `output_baseline` | Returns the baseline debt-to-GDP path. |
+| `compute_output_shocked` | `output_shocked` | Returns the shocked debt-to-GDP path. |
+| `compute_output_delta` | `output_delta` | Returns shocked minus baseline in percentage points. |
 
 ### B. Selecting a country
 
-The first step is to create a context and select the country. The selected country determines the initial debt-to-GDP ratio used by the model’s country-profile lookup.
+The first step is to select the active country with `set_country_name`. The preloaded profiles are Borvelia, Litellia, and Aurelium. They correspond to initial debt-to-GDP ratios of 60.0 percent, 80.0 percent, and 40.0 percent of GDP, respectively.
 
-Tiny-DSA includes three pre-loaded country profiles:
-
-| Country | Initial debt-to-GDP | Profile description |
-|---|---:|---|
-| `Borvelia` | 60.0% of GDP | Stylized emerging market |
-| `Litellia` | 80.0% of GDP | Stylized HIPC |
-| `Aurelium` | 40.0% of GDP | Stylized advanced economy |
-
-Use `set_country_name(ctx, 'Litellia')` or another valid profile name after creating the context.
+Selecting the country also determines the initial debt-to-GDP ratio used by the projection. The initial debt value is derived from the active profile; you do not set it directly through the public scenario API.
 
 ### C. Setting the baseline parameters
 
-The baseline scenario is defined by three five-year time series:
+The baseline scenario is defined by three five-year series:
 
 - `set_growth_baseline` sets real GDP growth rates, expressed in percent per annum.
-- `set_interest_baseline` sets effective real interest rates on outstanding general-government debt, expressed in percent per annum.
-- `set_primary_balance_baseline` sets the primary balance, expressed as a percent of GDP. Positive values denote a surplus; negative values denote a deficit.
+- `set_interest_baseline` sets the effective real interest rate paid on outstanding general-government debt, expressed in percent per annum.
+- `set_primary_balance_baseline` sets the primary balance, expressed as a percent of GDP. Positive values denote a surplus.
 
-Each sequence position corresponds to projection years 1 through 5. For example, `[3.5, 3.5, 3.5, 3.5, 3.5]` sets a flat five-year growth path.
+For complete five-year scenarios, pass a 1-D sequence of five values in projection-year order. The setters also accept tidy records keyed by `TIME_PERIOD`, or a tidy Polars DataFrame with `TIME_PERIOD` and `OBS_VALUE` columns.
 
-The original default baseline used flat real growth of 3.5 percent, flat real interest rates of 4.0 percent, and fiscal consolidation from a 1.0 percent of GDP primary deficit in year 1 to a 1.0 percent surplus by year 5.
+The source-section default baseline is flat real growth at 3.5 percent, flat real interest at 4.0 percent, and fiscal consolidation from a 1.0 percent deficit to a 1.0 percent surplus over five years.
 
 ### D. Configuring the shock
 
 The shock is defined by three inputs:
 
-- `set_shock_year` sets the first projection year in which the shock takes effect. The shock then applies through the end of the five-year horizon.
-- `set_shock_type` selects the affected parameter: 1 for real GDP growth, 2 for the real interest rate, and 3 for the primary balance.
-- `set_shock_magnitudes` sets the available shock magnitudes. The active run applies the magnitude associated with the selected shock type.
+- `set_shock_year` sets the first projection year in which the shock takes effect. The shock applies from that year through the end of the horizon.
+- `set_shock_type` selects the affected parameter: `1` for real GDP growth, `2` for the real interest rate, and `3` for the primary balance.
+- `set_shock_magnitudes` sets the step-change magnitudes for the three shock parameters.
 
-Use records for `set_shock_magnitudes` so each value is explicitly tied to its affected parameter.
+Use records for `set_shock_magnitudes` when you want the parameter labels to be explicit. The expected labels are `Growth`, `Interest`, and `Primary balance`. Only the magnitude for the selected shock type is applied in a given run; the other magnitudes remain available for alternative shock configurations.
+
+The source-section default shock starts in year 2, uses shock type `1`, and sets magnitudes of -2.0, +2.0, and -1.0 percentage points for growth, interest, and primary balance, respectively.
 
 ### E. Reading the outputs
 
-The output functions return records keyed by `TIME_PERIOD`. Each record includes `OBS_VALUE` and may include metadata such as `SCENARIO` and `UNIT_MEASURE`. Convert these records to Polars DataFrames before displaying, joining, exporting, or plotting them.
+Read the stable output surface with the three compute functions. Each function returns a list of records keyed by `TIME_PERIOD`; the measure is in `OBS_VALUE`.
 
 ```{python}
 import polars as pl
@@ -108,7 +103,7 @@ def debt_to_gdp_frame(records: list[dict[str, object]], label: str) -> pl.DataFr
 
 
 ctx = make_context()
-set_country_name(ctx, 'Litellia')
+set_country_name(ctx, 'Borvelia')
 set_growth_baseline(ctx, [3.5, 3.5, 3.5, 3.5, 3.5])
 set_interest_baseline(ctx, [4.0, 4.0, 4.0, 4.0, 4.0])
 set_primary_balance_baseline(ctx, [-1.0, -0.5, 0.0, 0.5, 1.0])
@@ -123,15 +118,15 @@ set_shock_magnitudes(
     ],
 )
 
-baseline_debt = debt_to_gdp_frame(
+baseline = debt_to_gdp_frame(
     compute_output_baseline(ctx=ctx),
     'Baseline debt/GDP (%)',
 )
-shocked_debt = debt_to_gdp_frame(
+shocked = debt_to_gdp_frame(
     compute_output_shocked(ctx=ctx),
     'Shocked debt/GDP (%)',
 )
-delta_pp = (
+delta = (
     pl.DataFrame(compute_output_delta(ctx=ctx))
     .sort('TIME_PERIOD')
     .select(
@@ -140,13 +135,7 @@ delta_pp = (
     )
 )
 
-comparison = (
-    baseline_debt
-    .join(shocked_debt, on='TIME_PERIOD')
-    .join(delta_pp, on='TIME_PERIOD')
-)
-
-comparison
+baseline.join(shocked, on='TIME_PERIOD').join(delta, on='TIME_PERIOD')
 ```
 
-Use `compute_output_baseline` for the baseline path, `compute_output_shocked` for the shocked path, and `compute_output_delta` for the difference between them. These functions are the stable read-only output API for downstream consumers.
+Use the resulting table as the downstream comparison surface. Keep the scenario configuration, such as country name, shock year, and shock type, alongside the output records when passing results to reports or other systems.

@@ -2,9 +2,13 @@
 title: "Illustrative example"
 ---
 
-This example uses a fictional country, Borvelia, under the canonical Tiny-DSA defaults. Borvelia starts with general-government debt of 60 percent of GDP at the end of year 0. The authorities project real GDP growth of 3.5 percent per year, real interest rates of 4.0 percent, and a fiscal-consolidation path that moves the primary balance from a deficit of 1.0 percent of GDP in year 1 to a surplus of 1.0 percent of GDP by year 5.
+Borvelia is a fictional small open economy with general-government debt of 60 percent of GDP at the end of year 0. The country profile selected by `set_country_name` supplies that starting debt stock. The medium-term baseline assumes real GDP growth of 3.5 percent per year, real interest rates of 4.0 percent, and a primary-balance path that moves from a deficit of 1.0 percent of GDP in year 1 to a surplus of 1.0 percent of GDP by year 5.
 
-The team evaluates three shocks, each beginning in year 2 and persisting through the end of the five-year horizon: a 2-percentage-point reduction in real growth, a 2-percentage-point increase in the real interest rate, and a 1-percentage-point reduction in the primary balance.
+The examples below keep all other inputs at their canonical defaults. Each shock begins in year 2 and persists through year 5: a 2-percentage-point reduction in growth, a 2-percentage-point increase in interest rates, and a 1-percentage-point reduction in the primary balance. The API returns projection-year records for years 1 through 5; the final summary table adds year 0 manually to mirror the guide table.
+
+## Baseline trajectory
+
+Under baseline assumptions, the snowball factor `(1 + 0.04) / (1 + 0.035)` is 1.00483. Year-1 debt is therefore `60.00 * 1.00483 + 1.00 = 61.29` percent of GDP. The consolidating primary balance then offsets the modestly positive snowball, leaving year-5 debt close to the starting level.
 
 ```{python}
 import polars as pl
@@ -24,172 +28,175 @@ from tiny_dsa.api import (
 )
 
 
-def debt_to_gdp_frame(
-    records: list[dict[str, object]],
-    value_name: str = 'Debt/GDP (%)',
-) -> pl.DataFrame:
+def debt_to_gdp_frame(records: list[dict[str, object]], label: str = 'Debt/GDP (%)') -> pl.DataFrame:
     return (
         pl.DataFrame(records)
         .sort('TIME_PERIOD')
         .select(
             'TIME_PERIOD',
-            pl.col('OBS_VALUE').alias(value_name),
+            pl.col('OBS_VALUE').alias(label),
         )
     )
 
 
-def delta_frame(
-    records: list[dict[str, object]],
-    value_name: str = 'Delta (pp GDP)',
-) -> pl.DataFrame:
+def delta_frame(records: list[dict[str, object]], label: str = 'Delta (pp GDP)') -> pl.DataFrame:
     return (
         pl.DataFrame(records)
         .sort('TIME_PERIOD')
         .select(
             'TIME_PERIOD',
-            pl.col('OBS_VALUE').alias(value_name),
+            pl.col('OBS_VALUE').alias(label),
         )
     )
+
+
+def set_borvelia_assumptions(ctx) -> None:
+    set_country_name(ctx, 'Borvelia')
+    set_growth_baseline(ctx, [3.5, 3.5, 3.5, 3.5, 3.5])
+    set_interest_baseline(ctx, [4.0, 4.0, 4.0, 4.0, 4.0])
+    set_primary_balance_baseline(ctx, [-1.0, -0.5, 0.0, 0.5, 1.0])
+
+
+ctx = make_context()
+set_borvelia_assumptions(ctx)
+
+baseline_debt = debt_to_gdp_frame(compute_output_baseline(ctx=ctx))
+baseline_debt
 ```
 
-Configure the shared context once. Scalar setters take bare values, annual baseline paths use 1-D sequences in projection-year order, and shock magnitudes use records because they are keyed by `SHOCK_PARAMETER`.
+## Growth-shock scenario
+
+A 2-percentage-point reduction in real growth from year 2 onward raises the snowball factor in years 2 through 5 to `(1 + 0.04) / (1 + 0.015) = 1.02463`. Year-1 debt is unchanged because the shock has not yet started. By year 5, the debt ratio is materially above the baseline path.
 
 ```{python}
 ctx = make_context()
-set_country_name(ctx, 'Borvelia')
-set_growth_baseline(ctx, [3.5, 3.5, 3.5, 3.5, 3.5])
-set_interest_baseline(ctx, [4.0, 4.0, 4.0, 4.0, 4.0])
-set_primary_balance_baseline(ctx, [-1.0, -0.5, 0.0, 0.5, 1.0])
+set_borvelia_assumptions(ctx)
 set_shock_year(ctx, 2)
+set_shock_type(ctx, 1)
 set_shock_magnitudes(
     ctx,
     [
         {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': -2.0},
+        {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': 0.0},
+    ],
+)
+
+growth_shock = debt_to_gdp_frame(compute_output_shocked(ctx=ctx), 'Growth shock (%)')
+growth_delta = delta_frame(compute_output_delta(ctx=ctx))
+growth_shock.join(growth_delta, on='TIME_PERIOD')
+```
+
+## Interest-rate-shock scenario
+
+A 2-percentage-point increase in the real interest rate from year 2 onward raises the snowball factor to `(1 + 0.06) / (1 + 0.035) = 1.02415`. Because this factor is close to the growth-shock factor, the resulting debt path is also close to the growth-shock trajectory.
+
+```{python}
+ctx = make_context()
+set_borvelia_assumptions(ctx)
+set_shock_year(ctx, 2)
+set_shock_type(ctx, 2)
+set_shock_magnitudes(
+    ctx,
+    [
+        {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': 0.0},
         {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 2.0},
+        {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': 0.0},
+    ],
+)
+
+interest_shock = debt_to_gdp_frame(compute_output_shocked(ctx=ctx), 'Interest shock (%)')
+interest_delta = delta_frame(compute_output_delta(ctx=ctx))
+interest_shock.join(interest_delta, on='TIME_PERIOD')
+```
+
+## Primary-balance-shock scenario
+
+A 1-percentage-point reduction in the primary balance from year 2 onward leaves the snowball factor at its baseline value but directly weakens the fiscal contribution in each remaining year. The channel is direct rather than multiplicative, so the cumulative effect is close to the cumulative shock dose, adjusted for debt dynamics.
+
+```{python}
+ctx = make_context()
+set_borvelia_assumptions(ctx)
+set_shock_year(ctx, 2)
+set_shock_type(ctx, 3)
+set_shock_magnitudes(
+    ctx,
+    [
+        {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 0.0},
         {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': -1.0},
     ],
 )
+
+primary_balance_shock = debt_to_gdp_frame(compute_output_shocked(ctx=ctx), 'Primary balance shock (%)')
+primary_balance_delta = delta_frame(compute_output_delta(ctx=ctx))
+primary_balance_shock.join(primary_balance_delta, on='TIME_PERIOD')
 ```
 
-### The baseline trajectory
+## Full trajectories
 
-Under baseline assumptions, the snowball factor is `(1 + 0.04) / (1 + 0.035) = 1.00483`. Applied recursively to the initial debt stock and net of the consolidating primary balance, debt rises modestly during the deficit years before stabilizing as the primary balance turns positive. Year-1 debt is approximately `60.00 × 1.00483 + 1.00 = 61.29` percent of GDP. By year 5, debt is about 61.49 percent of GDP, only 1.49 percentage points above the starting level.
-
-```{python}
-baseline_debt = debt_to_gdp_frame(
-    compute_output_baseline(ctx=ctx),
-    'Baseline',
-)
-
-baseline_debt.with_columns(pl.col('Baseline').round(2))
-```
-
-### The growth-shock scenario
-
-A two-percentage-point reduction in real growth from year 2 onward raises the snowball factor to `(1 + 0.04) / (1 + 0.015) = 1.02463` in years 2 through 5. Year 1 is unchanged because the shock has not yet started. From year 2 onward, the higher snowball factor produces materially higher debt accumulation.
+The complete paths are easiest to compare in one table. The computed records provide years 1 through 5; year 0 is inserted as the known starting debt ratio of 60.00 percent of GDP.
 
 ```{python}
-set_shock_type(ctx, 1)
+def shocked_records(shock_type: int, shock_magnitudes: list[dict[str, object]]) -> list[dict[str, object]]:
+    ctx = make_context()
+    set_borvelia_assumptions(ctx)
+    set_shock_year(ctx, 2)
+    set_shock_type(ctx, shock_type)
+    set_shock_magnitudes(ctx, shock_magnitudes)
+    return compute_output_shocked(ctx=ctx)
 
-growth_shock_debt = debt_to_gdp_frame(
-    compute_output_shocked(ctx=ctx),
-    'Growth shock',
+
+def trajectory_row(scenario: str, records: list[dict[str, object]]) -> dict[str, object]:
+    row = {'Scenario': scenario, '0': 60.0}
+    row.update(
+        {
+            str(record['TIME_PERIOD']): round(float(record['OBS_VALUE']), 2)
+            for record in records
+        }
+    )
+    return row
+
+
+ctx = make_context()
+set_borvelia_assumptions(ctx)
+baseline_records = compute_output_baseline(ctx=ctx)
+
+growth_records = shocked_records(
+    1,
+    [
+        {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': -2.0},
+        {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': 0.0},
+    ],
 )
-growth_delta = delta_frame(
-    compute_output_delta(ctx=ctx),
-    'Growth shock delta',
+interest_records = shocked_records(
+    2,
+    [
+        {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 2.0},
+        {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': 0.0},
+    ],
 )
-
-growth_results = (
-    growth_shock_debt
-    .join(growth_delta, on='TIME_PERIOD')
-    .with_columns(pl.exclude('TIME_PERIOD').round(2))
-)
-growth_results
-```
-
-The year-5 growth-shock path is about 66.58 percent of GDP, 5.09 percentage points above the baseline. The fiscal consolidation remains in place, but it is not enough to reverse the upward debt path over the five-year horizon.
-
-### The interest-rate-shock scenario
-
-A two-percentage-point increase in the real interest rate from year 2 onward raises the snowball factor to `(1 + 0.06) / (1 + 0.035) = 1.02415` in years 2 through 5. The resulting path is close to the growth-shock path because the snowball factors are nearly identical.
-
-```{python}
-set_shock_type(ctx, 2)
-
-interest_shock_debt = debt_to_gdp_frame(
-    compute_output_shocked(ctx=ctx),
-    'Interest shock',
-)
-interest_delta = delta_frame(
-    compute_output_delta(ctx=ctx),
-    'Interest shock delta',
-)
-
-interest_results = (
-    interest_shock_debt
-    .join(interest_delta, on='TIME_PERIOD')
-    .with_columns(pl.exclude('TIME_PERIOD').round(2))
-)
-interest_results
-```
-
-The year-5 interest-rate-shock path is about 66.45 percent of GDP, 4.97 percentage points above the baseline. The small difference relative to the growth shock reflects the curvature of the `(1 + r) / (1 + g)` snowball factor.
-
-### The primary-balance-shock scenario
-
-A one-percentage-point reduction in the primary balance from year 2 onward leaves the snowball factor unchanged at the baseline value of 1.00483. Instead, it directly adds one percentage point of GDP to the deficit, or subtracts it from the surplus, in each affected year.
-
-```{python}
-set_shock_type(ctx, 3)
-
-primary_balance_shock_debt = debt_to_gdp_frame(
-    compute_output_shocked(ctx=ctx),
-    'Primary balance shock',
-)
-primary_balance_delta = delta_frame(
-    compute_output_delta(ctx=ctx),
-    'Primary balance shock delta',
+primary_balance_records = shocked_records(
+    3,
+    [
+        {'SHOCK_PARAMETER': 'Growth', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Interest', 'OBS_VALUE': 0.0},
+        {'SHOCK_PARAMETER': 'Primary balance', 'OBS_VALUE': -1.0},
+    ],
 )
 
-primary_balance_results = (
-    primary_balance_shock_debt
-    .join(primary_balance_delta, on='TIME_PERIOD')
-    .with_columns(pl.exclude('TIME_PERIOD').round(2))
-)
-primary_balance_results
-```
+trajectory_table = pl.DataFrame(
+    [
+        trajectory_row('Baseline', baseline_records),
+        trajectory_row('Growth shock', growth_records),
+        trajectory_row('Interest shock', interest_records),
+        trajectory_row('Primary balance shock', primary_balance_records),
+    ]
+).select('Scenario', '0', '1', '2', '3', '4', '5')
 
-The year-5 primary-balance-shock path is about 65.52 percent of GDP, 4.03 percentage points above the baseline. The smaller impact is expected because the shock is 1 percentage point rather than 2 percentage points, and because the channel is direct rather than operating through the snowball factor.
-
-### Full trajectories
-
-The output functions return projection-year records for years 1 through 5. The table below prepends year 0 using Borvelia's stated initial debt ratio of 60 percent of GDP, then joins the baseline and three shocked paths.
-
-```{python}
-projection_table = (
-    baseline_debt
-    .join(growth_shock_debt, on='TIME_PERIOD')
-    .join(interest_shock_debt, on='TIME_PERIOD')
-    .join(primary_balance_shock_debt, on='TIME_PERIOD')
-)
-
-year_zero = pl.DataFrame(
-    {
-        'TIME_PERIOD': [0],
-        'Baseline': [60.0],
-        'Growth shock': [60.0],
-        'Interest shock': [60.0],
-        'Primary balance shock': [60.0],
-    }
-)
-
-trajectory_table = (
-    pl.concat([year_zero, projection_table])
-    .sort('TIME_PERIOD')
-    .with_columns(pl.exclude('TIME_PERIOD').round(2))
-)
 trajectory_table
 ```
 
-You can verify any projection-year observation by comparing the corresponding `OBS_VALUE` returned by `compute_output_baseline`, `compute_output_shocked`, or `compute_output_delta` with the debt-dynamics formulas in the model guide.
+Rounded to two decimals, the table reproduces the baseline path and the three shocked debt-to-GDP trajectories for Borvelia. Use the `compute_output_delta` records when you need the shocked-minus-baseline difference in percentage points rather than the level of the debt ratio.

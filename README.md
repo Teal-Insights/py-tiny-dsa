@@ -1,7 +1,9 @@
 # Tiny DSA
 
-A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing debt-to-GDP ratio over a five-year horizon with one configurable shock.
+A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing the debt-to-GDP ratio over a five-year horizon with one configurable shock.
+
 Created by Teal Insights.
+
 ![Teal Insights logo](https://teal-insights.github.io/assets/logo.svg)
 
 ## Installation

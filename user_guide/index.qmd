@@ -2,23 +2,25 @@
 title: "Introduction"
 ---
 
-Tiny DSA is a stylized debt-sustainability tool for projecting a country's general-government debt-to-GDP ratio over a five-year horizon under a baseline macroeconomic and fiscal path and one configurable shock.[^1] It is intentionally minimal. The model implements a single public-debt accounting identity, recursed annually for five periods. It does not reproduce the indicator-and-threshold structure of operational debt-sustainability frameworks.
+Tiny DSA (`tiny_dsa`) is a stylized debt-sustainability tool for projecting a country's general-government debt-to-GDP ratio over a five-year horizon under a baseline macroeconomic and fiscal path and one configurable shock.[^1] It is intentionally minimal: the model preserves the illustrative workbook's core design, centered on a single public-debt accounting identity recursed annually for five periods. It does not reproduce the indicator-and-threshold structure of operational debt-sustainability frameworks.
 
-This Python package reimplements the illustrative Tiny-DSA Excel workbook for use in scripts, notebooks, and generated documentation. It was produced using a combination of programmatic extraction, machine translation, and AI, while preserving the workbook's intended calculations and documentation conventions at a high level.
+This package is a Python reimplementation of the illustrative Excel workbook. It was produced using a combination of programmatic extraction, machine translation, and AI, and exposes the model through a generated Python library rather than spreadsheet worksheets or user-interface controls.
 
-Install the package directly from the project repository with `uv`:
+Install the package directly from GitHub with uv:
 
-```bash
-uv pip install "git+https://github.com/Teal-Insights/py-tiny-dsa"
-```
+`uv add git+https://github.com/Teal-Insights/py-tiny-dsa`
 
-The intended reader is a domain economist familiar with the standard public-debt accounting identity, who needs to understand what the package computes, what its inputs and outputs mean, and where its simplifications depart from operational practice. The debt ratio and the primary balance are expressed as percentages of GDP. Real GDP growth and the real interest rate are expressed in percent per annum. Tiny DSA projects in real terms throughout.
+For temporary or notebook-style environments, use:
 
-Tiny DSA deliberately omits several components that matter in operational debt-sustainability analysis: the contribution of inflation to the debt ratio; exchange-rate dynamics and the currency decomposition of debt; residual financing terms for stock-flow adjustments, contingent-liability calls, and other below-the-line operations; and any endogenous response of the primary balance to the macroeconomic environment.[^2] The fiscal stance is taken as exogenous, the snowball factor is computed in real terms, and shocks are step changes to a single parameter from a configurable shock year onward. These omissions keep the model small enough to be traceable end to end.
+`uv pip install git+https://github.com/Teal-Insights/py-tiny-dsa`
 
-This documentation explains how to use the Python package and how to interpret its outputs. The guide is organized around the same concepts as the original workbook guide: a functional overview of the model interface, illustrative scenarios using a fictional country, Borvelia, and a methodology discussion covering the debt-dynamics identity, shock specification, output checks, and limitations.
+The intended reader is a domain economist familiar with the standard public-debt accounting identity, who needs to understand what the package computes, what its inputs and outputs mean, and where its simplifications depart from operational practice. The debt ratio and the primary balance are expressed as percentages of GDP. Real GDP growth and the real interest rate are expressed in percent per annum. The model projects in real terms throughout.
 
-[^1]: Tiny-DSA is a methodological artifact prepared by Teal Insights. It is not intended for policy use, is not validated against country-specific data, and is not endorsed by the IMF, the World Bank, or any other institution. The modeling choices follow the standard public-debt accounting literature; the documentation conventions follow the IMF/World Bank LIC-DSF and IMF FAD Q-CRAFT guidance documents.
+Tiny DSA deliberately omits several features that matter in operational debt-sustainability analysis: the contribution of inflation to the debt ratio; exchange-rate dynamics and the currency composition of debt; residual financing terms for stock-flow adjustments, contingent-liability calls, and other below-the-line operations; and any endogenous response of the primary balance to the macroeconomic environment.[^2] The fiscal stance is taken as exogenous, the snowball factor is computed in real terms, and shocks are step changes to a single parameter from a configurable shock year onward. These omissions keep the model small enough to be traceable end to end.
+
+This documentation explains how to configure and use Tiny DSA from Python and how to interpret its outputs. The remainder of the guide is structured as follows: the package overview introduces the model workflow, inputs, outputs, and generated API conventions; the examples section walks through illustrative scenarios using a fictional country, Borvelia; and the methodology section discusses the debt-dynamics identity, shock specification, realism checks, and limitations of the modeling approach.
+
+[^1]: Tiny DSA is a methodological artifact prepared by Teal Insights. It is not intended for policy use, is not validated against country-specific data, and is not endorsed by the IMF, the World Bank, or any other institution. The modeling choices follow the standard public-debt accounting literature; the documentation conventions follow the IMF/World Bank LIC-DSF and IMF FAD Q-CRAFT guidance documents.
 
 [^2]: For the corresponding treatment in operational frameworks, see International Monetary Fund and World Bank (2018), Sections II.B–II.D and Appendix III, and the discussion in Escolano (2010).
 
