@@ -2,24 +2,26 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeGuard, cast
 
 from .runtime import coerce_inputs_dict
 
-Layout = Literal["scalar", "series", "matrix"]
-SetterInput = object
-Scalar = str | int | float | bool | datetime | None
-Record = dict[str, object]
-Records = list[Record]
-SeriesInput = Records | Record | Sequence[Scalar]
+Layout: TypeAlias = Literal["scalar", "series", "matrix"]
+EmptyMeasure: TypeAlias = Literal["skip", "write", "error"]
+SetterInput: TypeAlias = object
+Scalar: TypeAlias = str | int | float | bool | datetime | None
+Record: TypeAlias = dict[str, object]
+Records: TypeAlias = list[Record]
 
 if TYPE_CHECKING:
     import pandas as pd
     import polars as pl
 
-    SeriesInput = Records | Record | Sequence[Scalar] | pd.DataFrame | pl.DataFrame
+    DataFrameInput: TypeAlias = pd.DataFrame | pl.DataFrame
 else:
-    SeriesInput = Records | Record | Sequence[Scalar] | object
+    DataFrameInput: TypeAlias = object
+
+SeriesInput: TypeAlias = Records | Record | Sequence[Scalar] | DataFrameInput
 
 """Coerce workbook and manifest values into series-binding scalars."""
 
@@ -194,6 +196,24 @@ def _dataframe_column_names(data: object) -> list[str]:
         raise TypeError(f"unsupported DataFrame-like input: {type(data)!r}")
     return [str(column) for column in columns]
 
+def _is_missing_value(value: object) -> bool:
+    """Return whether a normalized cell value counts as missing for empty-measure policy.
+
+    Treats ``None`` and float NaN as missing. Tabular inputs are normalized via
+    pandas/polars record conversion before this check runs.
+    """
+    return value is None or (isinstance(value, float) and value != value)
+
+def _validate_nonempty_key_fields(
+    records: Records,
+    *,
+    key_fields: tuple[str, ...],
+) -> None:
+    for index, record in enumerate(records):
+        for field in key_fields:
+            if field in record and _is_missing_value(record[field]):
+                raise ValueError(f"record[{index}]: empty key field {field!r}")
+
 def _validate_dataframe_columns(
     column_names: list[str],
     *,
@@ -205,11 +225,44 @@ def _validate_dataframe_columns(
     present = set(column_names)
     missing = sorted(required - present)
     if missing:
-        raise ValueError(f"missing required column(s): {missing!r}")
+        msg = f"missing required column(s): {missing!r}"
+        extra = sorted(present - set(key_fields) - {measure_field})
+        if measure_field in missing and extra:
+            tidy_columns = ", ".join([*key_fields, measure_field])
+            msg += (
+                f"; input looks wide (extra columns {extra!r}) — "
+                f"melt or stack to tidy with columns {tidy_columns!r}"
+            )
+        raise ValueError(msg)
     if strict:
         unknown = sorted(present - required)
         if unknown:
             raise ValueError(f"unknown columns {unknown!r}")
+
+def _apply_empty_measure(
+    records: Records,
+    *,
+    key_fields: tuple[str, ...],
+    measure_field: str,
+    empty_measure: EmptyMeasure,
+) -> Records:
+    """Apply empty key/measure policy after input normalization."""
+    _validate_nonempty_key_fields(records, key_fields=key_fields)
+    if empty_measure == "write":
+        return records
+
+    kept: list[dict[str, object]] = []
+    for index, record in enumerate(records):
+        if measure_field not in record:
+            if empty_measure == "error":
+                raise ValueError(f"record[{index}]: missing required field {measure_field!r}")
+            continue
+        if _is_missing_value(record[measure_field]):
+            if empty_measure == "error":
+                raise ValueError(f"record[{index}]: empty measure field {measure_field!r}")
+            continue
+        kept.append(record)
+    return kept
 
 def _row_dicts_from_dataframe(data: object) -> list[Record]:
     if _is_pandas_dataframe(data):
@@ -389,6 +442,8 @@ def coerce_setter_input(
     key_order: tuple[object, ...] | None,
     strict: bool,
     key_dtypes: Mapping[str, str] | None = None,
+    empty_measure: EmptyMeasure = "write",
+    requires_address: bool = False,
 ) -> Records:
     """Normalize caller input into records for ``_apply_series_records``.
 
@@ -400,6 +455,8 @@ def coerce_setter_input(
         key_order: Canonical key values for positional measure iterables.
         strict: When true, reject unknown DataFrame columns.
         key_dtypes: Optional read modes per key field applied to all input shapes.
+        empty_measure: How to treat rows with missing/NaN measure values.
+        requires_address: When true, reject DataFrame input (records must carry addresses).
 
     Returns:
         List of record dicts ready for leaf resolution.
@@ -414,6 +471,12 @@ def coerce_setter_input(
             raise TypeError("scalar setters do not accept DataFrame input")
         return _coerce_scalar_records(data, measure_field)
 
+    if requires_address and _is_tabular_dataframe(data):
+        raise TypeError(
+            "DataFrame input is not supported when the binding requires address "
+            "disambiguation; pass records with 'address' or 'cell_address'"
+        )
+
     records = _coerce_non_scalar_records(
         data,
         layout=layout,
@@ -422,10 +485,16 @@ def coerce_setter_input(
         key_order=key_order,
         strict=strict,
     )
-    return _apply_key_dtypes(
+    records = _apply_key_dtypes(
         records,
         key_fields=key_fields,
         key_dtypes=key_dtypes,
+    )
+    return _apply_empty_measure(
+        records,
+        key_fields=key_fields,
+        measure_field=measure_field,
+        empty_measure=empty_measure,
     )
 
 def _coerce_records(records, measure_field, *, allow_scalar=False) -> Records:

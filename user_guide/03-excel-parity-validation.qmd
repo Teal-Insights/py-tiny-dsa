@@ -3,7 +3,7 @@ title: "Excel parity validation"
 ---
 
 Tiny DSA includes an exported validation bundle that checks the generated
-`tiny_dsa` package against the illustrative Excel workbook. The test drives
+`tiny_dsa` package against the source Excel workbook. The test drives
 the workbook with Microsoft Excel through `xlwings`, applies the same inputs
 through the package's public `set_*` functions, and compares the public
 `compute_*` outputs cell by cell.
@@ -14,14 +14,13 @@ The current reference run is **PASS**: **1,770 / 1,770**
 cell-level comparisons passed at `atol = 1e-06`.
 
 - Result: **PASS**
-- Generated: `2026-06-27T02:45:06+00:00`
+- Generated: `2026-07-12T14:18:16+00:00`
 - Passed: **1,770**
 - Failed: **0**
 - Pass rate: **100.00%**
 - Acceptance bar: **100.00%**
 
-The sweep covers 118 scenarios and 15 output cells, for 1,770 comparisons
-against Excel.
+The sweep covers **1,770** cell-level comparisons against Excel.
 
 ## What Was Tested
 
@@ -37,12 +36,12 @@ The validation bundle is shipped in the source repository under `tests/`.
 Because the golden-master oracle uses Microsoft Excel through COM automation,
 reruns require Windows with Microsoft Excel installed.
 
-- [Reference parity report](https://github.com/Teal-Insights/py-tiny-dsa/blob/main/tests/results/reference/parity_report.txt)
-- [Validation bundle README](https://github.com/Teal-Insights/py-tiny-dsa/blob/main/tests/README.md)
-- [Differential test harness](https://github.com/Teal-Insights/py-tiny-dsa/blob/main/tests/differential_test_exported_library.py)
+- Reference parity report: `tests/results/reference/parity_report.txt`
+- Validation bundle README: `tests/README.md`
+- Differential test harness: `tests/differential/differential_test_exported_library.py`
 
 To re-run the validation from the exported project:
 
 ```pwsh
-uv run --project . --group validation python tests/differential_test_exported_library.py --layout exported
+uv run --project . --group validation python -m tests.differential.differential_test_exported_library --layout exported
 ```
