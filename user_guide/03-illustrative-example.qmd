@@ -1,0 +1,102 @@
+---
+title: "Illustrative Example"
+---
+
+This section walks through three illustrative scenarios for Borvelia, a stylized small open economy with general-government debt of 60 percent of GDP at the end of year 0. The baseline assumes flat real GDP growth of 3.5 percent, flat real interest rates of 4.0 percent, and a fiscal-consolidation path that moves the primary balance from a deficit of 1.0 percent of GDP in year 1 to a surplus of 1.0 percent by year 5. The three alternative shocks each begin in year 2 and persist through year 5: a 2-percentage-point reduction in real growth, a 2-percentage-point increase in the real interest rate, and a 1-percentage-point reduction in the primary balance.
+
+```{python}
+from tiny_dsa import data
+from tiny_dsa.api import (
+    OutputBaselineInputs,
+    OutputDeltaInputs,
+    OutputShockedInputs,
+    compute_output_baseline,
+    compute_output_delta,
+    compute_output_shocked,
+)
+
+country_name = "Borvelia"
+initial_debt_profile = data.COUNTRY_INITIAL_DEBT_DEFAULT
+growth_baseline = data.GROWTH_BASELINE_DEFAULT
+interest_baseline = data.INTEREST_BASELINE_DEFAULT
+primary_balance_baseline = data.PRIMARY_BALANCE_BASELINE_DEFAULT
+
+def values(series):
+    return [value for _, value in series.items()]
+```
+
+### Baseline trajectory
+
+Under baseline assumptions, the snowball factor is `(1 + 0.04) / (1 + 0.035) = 1.00483`. Applying it recursively and subtracting the consolidating primary balance yields a modest rise during the deficit years before consolidation as the primary balance turns positive. Year-1 debt is `60.00 x 1.00483 - (-1.00) = 61.29`; year-5 debt is 61.49.
+
+```{python}
+baseline = compute_output_baseline(OutputBaselineInputs.from_defaults())
+[(year, round(value, 2)) for (year,), value in baseline.items()]
+```
+
+### Shock scenarios
+
+The three shocks are passed to `compute_output_shocked` with the same baseline assumptions. The shock starts in year 2 and remains active through the end of the five-year horizon. The `shock_type` argument selects the parameter: 1 for real GDP growth, 2 for the real interest rate, and 3 for the primary balance. The `shock_magnitudes` sequence gives the magnitude for each shock type in percentage points; only the selected type is applied.
+
+```{python}
+growth_shock = compute_output_shocked(
+    OutputShockedInputs.from_defaults(shock_year=2, shock_type=1)
+)
+
+interest_shock = compute_output_shocked(
+    OutputShockedInputs.from_defaults(shock_year=2, shock_type=2)
+)
+
+primary_balance_shock = compute_output_shocked(
+    OutputShockedInputs.from_defaults(shock_year=2, shock_type=3)
+)
+```
+
+Combine the baseline and shocked paths into a single Polars table, prepending the year-0 initial debt of 60.0.
+
+```{python}
+[
+    {
+        "Year": year,
+        "Baseline": round(baseline_value, 2),
+        "Growth shock": round(growth_value, 2),
+        "Interest shock": round(interest_value, 2),
+        "Primary balance shock": round(primary_value, 2),
+    }
+    for year, baseline_value, growth_value, interest_value, primary_value in zip(
+        range(1, 6), values(baseline), values(growth_shock),
+        values(interest_shock), values(primary_balance_shock), strict=True
+    )
+]
+```
+
+### Deviations from baseline
+
+Use `compute_output_delta` to obtain the difference between each shocked path and the baseline, in percentage points. The final-year deltas are 5.09, 4.97, and 4.03, respectively.
+
+```{python}
+delta_growth = compute_output_delta(
+    OutputDeltaInputs.from_defaults(shock_year=2, shock_type=1)
+)
+
+delta_interest = compute_output_delta(
+    OutputDeltaInputs.from_defaults(shock_year=2, shock_type=2)
+)
+
+delta_primary = compute_output_delta(
+    OutputDeltaInputs.from_defaults(shock_year=2, shock_type=3)
+)
+
+[
+    {
+        "Year": year,
+        "Growth shock": round(growth_value, 2),
+        "Interest shock": round(interest_value, 2),
+        "Primary balance shock": round(primary_value, 2),
+    }
+    for year, growth_value, interest_value, primary_value in zip(
+        range(1, 6), values(delta_growth), values(delta_interest),
+        values(delta_primary), strict=True
+    )
+]
+```

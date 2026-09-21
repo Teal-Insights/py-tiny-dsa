@@ -1,0 +1,84 @@
+---
+title: "Getting started"
+---
+
+## Install
+
+Add the package directly from GitHub:
+
+Run:
+
+`uv add "tiny-dsa @ git+https://github.com/Teal-Insights/py-tiny-dsa"`
+
+The package import path for the calculation functions is `tiny_dsa.api`.
+
+## A first projection
+
+The API takes the country profile values and the scenario inputs explicitly.
+The default profile contains three countries, in this order:
+`Borvelia`, `Litellia`, and `Aurelium`. The three debt values must stay aligned
+with that order.
+
+```{python}
+from tiny_dsa import api, data
+from tiny_dsa.runtime import as_records
+
+baseline = api.compute_output_baseline(
+    api.OutputBaselineInputs.from_defaults()
+)
+
+as_records(api.compute_output_baseline, baseline)
+```
+
+The result is a labelled series for projection years 1 through 5. With the canonical
+defaults, the values are approximately 61.29, 62.09, 62.39, 62.19, and 61.49
+percent of GDP.
+
+## Add a shock
+
+Choose one shock type:
+
+| `shock_type` | Parameter affected | Default magnitude |
+|---:|---|---:|
+| 1 | Real GDP growth | -2.0 percentage points |
+| 2 | Real interest rate | +2.0 percentage points |
+| 3 | Primary balance | -1.0 percentage points |
+
+`shock_year` is the first affected projection year. The selected magnitude is
+then applied in every subsequent year.
+
+```{python}
+scenario = dict(
+    country_name="Borvelia",
+    country_initial_debt=data.COUNTRY_INITIAL_DEBT_DEFAULT,
+    growth_baseline=data.GROWTH_BASELINE_DEFAULT,
+    interest_baseline=data.INTEREST_BASELINE_DEFAULT,
+    primary_balance_baseline=data.PRIMARY_BALANCE_BASELINE_DEFAULT,
+    shock_year=2,
+    shock_type=1,
+    shock_magnitudes=data.SHOCK_MAGNITUDES_DEFAULT,
+)
+
+shocked = api.compute_output_shocked(
+    api.OutputShockedInputs.from_defaults(**scenario)
+)
+delta = api.compute_output_delta(
+    api.OutputDeltaInputs.from_defaults(**scenario)
+)
+as_records(api.compute_output_delta, delta)
+```
+
+The first delta is zero because the shock starts in year 2. For a growth shock
+with the defaults, the year-5 delta is approximately 5.09 percentage points.
+
+## Work with labelled observations
+
+The calculation functions return labelled series. Use `as_records` when a tidy
+list of year/value records is more convenient.
+
+```{python}
+as_records(api.compute_output_shocked, shocked)
+```
+
+Each record has a `TIME_PERIOD` from 1 to 5 and an `OBS_VALUE`. A single value
+can also be selected by coordinate, for example `delta.sel(TIME_PERIOD=5)`.

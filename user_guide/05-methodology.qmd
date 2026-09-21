@@ -1,0 +1,117 @@
+---
+title: "Methodology and interpretation"
+---
+
+## The accounting identity
+
+Tiny DSA recurses the following real-terms identity from year 0 through year
+5:
+
+$$
+D_t = D_{t-1}\frac{1+r_t}{1+g_t} - PB_t.
+$$
+
+Here, $D$ is gross general-government debt as a percent of GDP, $r$ is the
+effective real interest rate, $g$ is real GDP growth, and $PB$ is the primary
+balance as a percent of GDP. A positive primary balance is a surplus and
+therefore reduces debt. Pass rates and balances to the API as percentage-point
+values (`3.5`, not `0.035`); the ratio uses the corresponding rates, so `3.5`
+enters the snowball factor as `0.035`.
+
+The factor
+
+$$
+\frac{1+r_t}{1+g_t}
+$$
+
+is the real snowball factor. With the canonical assumptions it is
+`1.00483`, because real interest exceeds real growth by 0.5 percentage
+points. The first-period calculation can therefore be reproduced as:
+
+```{python}
+snowball = (1 + 0.04) / (1 + 0.035)
+year_1 = 60.0 * snowball - (-1.0)
+round(snowball, 5), round(year_1, 2)
+```
+
+The API returns only years 1 through 5. If a year-0 value is needed for a
+chart or table, prepend the resolved starting value yourself.
+
+## How a shock works
+
+Each run selects exactly one parameter:
+
+| `shock_type` | Parameter | Typical sign for an adverse shock |
+|---:|---|---:|
+| 1 | Real GDP growth | Negative |
+| 2 | Real interest rate | Positive |
+| 3 | Primary balance | Negative |
+
+The selected magnitude is added to the relevant baseline series from
+`shock_year` through year 5. It is a permanent step change for the remainder
+of the horizon, not a one-year impulse. Years before `shock_year` stay on the
+baseline path. The other two entries in `shock_magnitudes` are ignored for
+that run.
+
+For example, the growth stress changes growth from 3.5 to 1.5 percent from
+year 2 onwards:
+
+```{python}
+from tiny_dsa.api import OutputShockedInputs
+from tiny_dsa.api import compute_output_shocked
+
+growth_stress = compute_output_shocked(
+    OutputShockedInputs.from_defaults(shock_year=2, shock_type=1)
+)
+growth_stress
+```
+
+The shock does not alter the baseline path. The impact relative to baseline is
+
+$$
+\Delta D_t = D_t^{\text{shocked}} - D_t^{\text{baseline}}.
+$$
+
+A positive delta means the shock leaves debt higher than baseline, in
+percentage points of GDP:
+
+```{python}
+from tiny_dsa.api import OutputBaselineInputs, OutputDeltaInputs
+from tiny_dsa.api import compute_output_baseline, compute_output_delta
+
+baseline = compute_output_baseline(OutputBaselineInputs.from_defaults())
+delta = compute_output_delta(
+    OutputDeltaInputs.from_defaults(shock_year=2, shock_type=1)
+)
+list(zip(range(1, 6), (value for _, value in baseline.items()), (value for _, value in delta.items())))
+```
+
+## A useful reasonableness check
+
+For a constant debt ratio $D$, constant real interest rate $r$, and constant
+real growth rate $g$, the stabilizing primary balance is
+
+$$
+PB^* = D\frac{r-g}{1+g}.
+$$
+
+At $D=60$, $r=4.0\%$, and $g=3.5\%$, this is approximately 0.29 percent of
+GDP. The canonical primary-balance series averages zero, so a mildly rising
+baseline is economically plausible. This check helps distinguish a genuine
+scenario result from a sign error in the primary balance or an incorrectly
+implemented snowball factor.
+
+## Scope and limitations
+
+Tiny DSA should be read as a transparent accounting demonstration. It has:
+
+- one debt aggregate and a five-year horizon;
+- exogenous growth, interest, and primary-balance paths;
+- one persistent, single-parameter shock per run; and
+- no inflation, exchange-rate, currency, maturity, residual-financing,
+  contingent-liability, or stock-flow-adjustment channels.
+
+It also has no debt thresholds, risk classification, fiscal reaction function,
+or country-specific macroeconomic database. Those omissions are material for
+operational DSA work. Users should use the IMF/World Bank LIC-DSF, Q-CRAFT,
+or another fit-for-purpose framework when the analysis informs policy.

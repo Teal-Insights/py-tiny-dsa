@@ -1,0 +1,35 @@
+---
+title: "Excel parity validation"
+---
+
+Tiny DSA includes a FormulaEvaluator parity check for the generated `tiny_dsa` package. The test evaluates the extraction graph and compares those cells to keyword-only `compute_*` results from the exported library.
+
+## Current reference result
+
+The current reference run is **PASS**: **1,770 / 1,770**
+cell-level comparisons passed at `atol = 1e-06, rtol = 1e-12`.
+
+- Result: **PASS**
+- Generated: `2026-09-21T12:51:34+00:00`
+- Passed: **1,770**
+- Failed: **0**
+- Pass rate: **100.00%**
+- Acceptance bar: **100.00%**
+- Evidence: **formula_evaluator**
+
+The current run covers **1,770** cell-level comparisons against the FormulaEvaluator.
+
+## What Was Tested
+
+The validation compares `tiny_dsa` `compute_*` results against excel-grapher's FormulaEvaluator on the extraction graph across the authored scenario sweep. It does not drive Microsoft Excel or public `set_*` setters.
+
+## Inspect Or Re-run
+
+The validation bundle is shipped in the source repository under `tests/`.
+Rerun the pipeline `validate` stage after export and annotate. Microsoft Excel is not required.
+
+- Reference parity report: `tests/results/reference/parity_report.txt`
+- Validation bundle README: `tests/README.md`
+- Differential test harness: the pipeline `validate` stage (`FormulaEvaluator`)
+
+To re-run FormulaEvaluator parity, run the extraction pipeline through the `validate` stage.

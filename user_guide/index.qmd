@@ -1,23 +1,41 @@
 ---
-title: "Introduction"
+title: "Tiny DSA"
+subtitle: "A practical guide for economists"
 ---
 
-Tiny DSA is a stylized debt-sustainability tool that projects a country's general-government debt-to-GDP ratio over a five-year horizon under a baseline macroeconomic and fiscal path and one configurable shock.[^1] It is intentionally minimal. The model implements a single public-debt accounting identity, recursed annually for five periods. It does not reproduce the indicator-and-threshold structure of operational debt-sustainability frameworks.
+Tiny DSA is a Python reimplementation of the small Excel workbook described in
+the [guidance note](../docs-source/guidance-note.md). It projects
+general-government debt-to-GDP over five years from a baseline path and one
+configurable stress scenario. The model is a transparent accounting exercise
+for economists who want to trace the debt-dynamics identity, test assumptions,
+or reproduce the corresponding Excel calculations. It is not an operational
+debt-sustainability framework.
 
-Install the Python package directly from GitHub with:
+## The model in one equation
 
-`uv add "tiny-dsa @ git+https://github.com/Teal-Insights/py-tiny-dsa"`
+For each projection year, Tiny DSA applies
 
-This package is a Python reimplementation of the source Excel workbook. It was produced using programmatic extraction, machine translation, and AI-assisted documentation rewriting. The purpose of the package documentation is to make the workbook logic easier to inspect, run, and reproduce from Python while preserving the source model's intent and limitations.
+$$
+D_t = D_{t-1}\frac{1+r_t}{1+g_t} - PB_t,
+$$
 
-The intended reader is a domain economist familiar with the standard public-debt accounting identity, who needs to understand what the tool computes, what its inputs and outputs mean, and where its simplifications depart from operational practice. The debt ratio and the primary balance are expressed as percentages of GDP. Real GDP growth and the real interest rate are expressed in percent per annum. The tool projects in real terms throughout.
+where $D$ is debt-to-GDP, $r$ is the real interest rate, $g$ is real GDP
+growth, and $PB$ is the primary balance. Rates and balances are entered as
+percentage-point values (for example, `3.5`, not `0.035`). A positive primary
+balance is a surplus and reduces debt.
 
-Tiny DSA deliberately omits several features that are important in operational frameworks: the contribution of inflation to the debt ratio; exchange-rate dynamics and the currency composition of debt; residual financing terms such as stock-flow adjustments, contingent-liability calls, and other below-the-line operations; and any endogenous response of the primary balance to the macroeconomic environment.[^2] The fiscal stance is taken as exogenous, the snowball factor is computed in real terms, and shocks are step changes to a single parameter from a configurable shock year onward. These omissions keep the model small enough to be traced end to end.
+::: {.callout-warning}
+Tiny DSA is a methodological artifact, not an operational debt-sustainability
+framework. It is not validated against country data and is not endorsed by the
+IMF, the World Bank, or any other institution. Do not use its results for
+policy decisions without a substantially richer model and independent review.
+:::
 
-The rest of this documentation explains how to use the Python package and interpret its outputs. It covers the model interface, the baseline and shock inputs, illustrative scenarios using the fictional country Borvelia, and the methodology behind the debt-dynamics identity, shock specification, realism checks, and modeling limitations.
+## Start here
 
-[^1]: Tiny DSA is a methodological artifact prepared by Teal Insights. It is not intended for policy use, is not validated against country-specific data, and is not endorsed by the IMF, the World Bank, or any other institution. The modeling choices follow the standard public-debt accounting literature; the documentation conventions follow the IMF/World Bank LIC-DSF and IMF FAD Q-CRAFT guidance documents.
-
-[^2]: For the corresponding treatment in operational frameworks, see International Monetary Fund and World Bank (2018), Sections II.B–II.D and Appendix III, and the discussion in Escolano (2010).
-
-For correctness evidence, see [Excel parity validation](03-excel-parity-validation.qmd), which summarizes the exported-library differential test against the source workbook.
+- [Install and run a first projection](01-getting-started.qmd)
+- [Understand the input and output contract](02-inputs-and-outputs.qmd)
+- [Work through a scenario](03-illustrative-example.qmd)
+- [Use the API in an analysis workflow](04-workflow.qmd)
+- [Understand the equation and its limitations](05-methodology.qmd)
+- [Validate results against Excel](user-guide/excel-parity-validation.qmd)

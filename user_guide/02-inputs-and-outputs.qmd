@@ -1,0 +1,87 @@
+---
+title: "Inputs and outputs"
+---
+
+Each calculation takes one validated input bundle and returns a labelled
+annual series. There is no mutable session: pass the scenario on every call.
+Scalar fields such as `country_name`, `shock_year`, and `shock_type` are bare
+values. Series fields are `tiny_dsa.tensor.Series` objects; the defaults in
+`tiny_dsa.data` are the simplest valid inputs. Profile names and year labels
+live in that `data` module, and the public compute functions still require
+their scenario inputs explicitly. Each `compute_*` function returns a labelled
+`Series`, not a bare tuple.
+
+The stable output functions, and the only symbols downstream code should
+reference, are:
+
+| Function | Returns |
+|---|---|
+| `compute_output_baseline` | Five-year baseline debt-to-GDP path |
+| `compute_output_shocked` | Five-year shocked debt-to-GDP path |
+| `compute_output_delta` | Difference, shocked minus baseline, in percentage points |
+
+## Selecting a country
+
+The selected country is the scalar `country_name`. Initial debt comes from
+`country_initial_debt`, a three-value series aligned with the profile names in
+`data.COUNTRY_PROFILE_NAMES`: **Borvelia**, **Litellia**, and **Aurelium**.
+Those names are not a scenario input. When relying on them, use
+`data.COUNTRY_INITIAL_DEBT_DEFAULT`. Its values are ordered as Borvelia,
+Litellia, and Aurelium: 60.0, 80.0, and 40.0 percent of GDP. Initial debt is
+resolved by matching `country_name` against the profile names and selecting
+the corresponding entry from `country_initial_debt`.
+
+## Baseline series
+
+The baseline is three five-element series covering years 1 through 5.
+
+- `growth_baseline`: real GDP growth, percent per year. The default path is flat at 3.5.
+- `interest_baseline`: effective real interest rate on outstanding general-government debt, percent per year. The default path is flat at 4.0, so the interest-growth differential is 0.5 percentage points.
+- `primary_balance_baseline`: primary balance as percent of GDP. Positive values are a surplus. The default path consolidates from a deficit of 1.0 in year 1 to a surplus of 1.0 in year 5, in steps of 0.5 percentage points.
+
+## Shock
+
+The shock has three inputs.
+
+- `shock_year`: an integer from 1 to 5, the first year the shock applies. It then stays in force through year 5. The default is 2.
+- `shock_type`: an integer from 1 to 3. 1 is real GDP growth, 2 is the real interest rate, and 3 is the primary balance. The default is 1.
+- `shock_magnitudes`: three magnitudes in percentage points, ordered growth, interest, primary balance. The defaults are -2.0, +2.0, and -1.0. Only the magnitude for `shock_type` is applied.
+
+## Outputs
+
+The three functions return years 1 through 5. Each series has a `TIME_PERIOD`
+axis of 1 through 5. The delta is shocked minus baseline, in percentage points
+of GDP. There is no separate engine-visible path; the compute functions return
+these output values directly.
+
+```{python}
+from tiny_dsa import data
+from tiny_dsa.api import (
+    OutputBaselineInputs,
+    OutputDeltaInputs,
+    OutputShockedInputs,
+    compute_output_baseline,
+    compute_output_delta,
+    compute_output_shocked,
+)
+
+scenario = dict(
+    country_name="Borvelia",
+    country_initial_debt=data.COUNTRY_INITIAL_DEBT_DEFAULT,
+    growth_baseline=data.GROWTH_BASELINE_DEFAULT,
+    interest_baseline=data.INTEREST_BASELINE_DEFAULT,
+    primary_balance_baseline=data.PRIMARY_BALANCE_BASELINE_DEFAULT,
+    shock_year=2,
+    shock_type=1,
+    shock_magnitudes=data.SHOCK_MAGNITUDES_DEFAULT,
+)
+baseline_inputs = {
+    key: value
+    for key, value in scenario.items()
+    if key not in {"shock_year", "shock_type", "shock_magnitudes"}
+}
+
+compute_output_baseline(OutputBaselineInputs.from_defaults(**baseline_inputs))
+compute_output_shocked(OutputShockedInputs.from_defaults(**scenario))
+compute_output_delta(OutputDeltaInputs.from_defaults(**scenario))
+```

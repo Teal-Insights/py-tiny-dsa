@@ -1,3 +1,6 @@
+homepage: index
+seo:
+  enabled: false
 # Great Docs Configuration
 # See https://posit-dev.github.io/great-docs/user-guide/configuration.html
 
@@ -6,6 +9,8 @@
 # Set this if your importable module name differs from the project name.
 # Example: project 'py-yaml12' with module name 'yaml12'
 module: tiny_dsa
+site_url: "https://teal-insights.github.io/py-tiny-dsa/"
+repo: https://github.com/Teal-Insights/py-tiny-dsa
 display_name: Tiny DSA
 homepage: user_guide
 
@@ -103,3 +108,4 @@ jupyter: 'C:/Users/chris/Software/tiny-dsa-extraction-pipeline/.venv/Scripts/pyt
 #       - SimpleClass          # Methods documented inline (default)
 #
 # After editing, run 'great-docs build' to generate your documentation.
+homepage: index

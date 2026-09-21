@@ -1,8 +1,16 @@
-Parity report: exported Tiny DSA standalone library vs Excel
-Generated: 2026-07-12T14:18:16+00:00
+Parity report: exported Tiny DSA standalone library vs FormulaEvaluator
+Generated: 2026-09-21T12:51:34+00:00
 Workbook:  C:\Users\chris\Software\tiny-dsa-extraction-pipeline\data\tiny-dsa.xlsx
 Package:   C:\Users\chris\Software\tiny-dsa-extraction-pipeline\dist\tiny_dsa (imported as dist.tiny_dsa.api)
-Tolerance: atol = 1e-06
+Oracles:   excel-grapher graph + FormulaEvaluator [golden] vs exported package compute_* [mvp]
+Tolerance: atol = 1e-06, rtol = 1e-12
+
+Workbook SHA-256: c9a30c8f52d2e7a29b04b3e680f34269050f8127e119ef2c8d1cbda41012ba6b
+
+ENVIRONMENT
+  Python:  3.13.3
+  OS:      Windows-11-10.0.26200-SP0
+  excel-grapher: 22.0.0
 
 Total comparisons: 1770
 Passed:            1770

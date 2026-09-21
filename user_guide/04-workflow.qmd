@@ -1,0 +1,89 @@
+---
+title: "API workflow"
+---
+
+## Keep scenario inputs explicit
+
+The functions in `tiny_dsa.api` do not maintain a workbook-like mutable
+session. Pass the complete scenario to each calculation. This makes a run
+reproducible and makes it straightforward to compare several shocks.
+
+```{python}
+from tiny_dsa import api, data
+from tiny_dsa.api import OutputBaselineInputs, OutputDeltaInputs, OutputShockedInputs
+
+common = dict(
+    country_name="Litellia",
+    country_initial_debt=data.COUNTRY_INITIAL_DEBT_DEFAULT,
+    growth_baseline=data.GROWTH_BASELINE_DEFAULT.with_values((3.0, 3.2, 3.4, 3.5, 3.5)),
+    interest_baseline=data.INTEREST_BASELINE_DEFAULT.with_values((4.5, 4.5, 4.5, 4.5, 4.5)),
+    primary_balance_baseline=data.PRIMARY_BALANCE_BASELINE_DEFAULT,
+    shock_magnitudes=data.SHOCK_MAGNITUDES_DEFAULT,
+)
+
+baseline_common = {
+    key: value for key, value in common.items() if key != "shock_magnitudes"
+}
+baseline = api.compute_output_baseline(
+    OutputBaselineInputs.from_defaults(**baseline_common)
+)
+scenario = common | {"shock_year": 2, "shock_type": 3}
+shocked = api.compute_output_shocked(OutputShockedInputs.from_defaults(**scenario))
+delta = api.compute_output_delta(OutputDeltaInputs.from_defaults(**scenario))
+
+baseline, shocked, delta
+```
+
+The input series are keyed by semantic axes. `.with_values(...)` preserves the
+default axis and replaces its five observations, while `.sel(...)` can retrieve
+one named observation.
+
+## Compare all three shock types
+
+To compare shocks, change `shock_type` while keeping the other inputs fixed.
+The magnitudes remain ordered as growth, interest, and primary balance.
+
+```{python}
+shock_results = {}
+for shock_type in (1, 2, 3):
+    run = common | {"shock_year": 2, "shock_type": shock_type}
+    shock_results[shock_type] = api.compute_output_delta(
+        OutputDeltaInputs.from_defaults(**run)
+    )
+
+shock_results
+```
+
+This produces three distinct delta paths. In an analyst's workflow, retain the
+shock type and magnitude alongside the returned values so that a table or
+chart remains self-describing.
+
+## Create a tidy table
+
+```{python}
+from tiny_dsa.runtime import as_records
+
+records = as_records(api.compute_output_delta, delta)
+records
+```
+
+The metadata on each compute function describes the output domain:
+
+```{python}
+api.compute_output_delta.__key__, api.compute_output_delta.__domain__
+```
+
+For this package the key is `TIME_PERIOD` and the domain is `(1, 2, 3, 4, 5)`.
+
+## Errors and validation
+
+The API fails closed on malformed series. A two-value growth series, for
+example, cannot be published against the required five-year schema rather
+than silently padding the scenario.
+An unknown country follows Excel lookup semantics and returns `#N/A` in the
+output path. Keep country names aligned with the profile names:
+`Borvelia`, `Litellia`, and `Aurelium`.
+
+The package preserves Excel-style error codes as strings where a calculation
+cell cannot produce a numeric result. Analysts should check for strings before
+performing downstream numeric aggregation.

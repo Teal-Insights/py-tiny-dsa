@@ -1,6 +1,23 @@
+"""Inverted-tree mechanical extraction."""
+
 from __future__ import annotations
 
-from .api import compute_all, make_context, list_setters, list_computes, set_country_initial_debt, set_country_name, set_growth_baseline, set_interest_baseline, set_primary_balance_baseline, set_shock_magnitudes, set_shock_type, set_shock_year, compute_output_baseline, compute_output_delta, compute_output_shocked  # noqa: F401
-from .data import DEFAULT_INPUTS  # noqa: F401
+from . import data
+from .api import compute_output_baseline, compute_output_shocked, compute_output_delta
+from .model import Model, OutputBaselineInputs, OutputShockedInputs, OutputDeltaInputs
+from .runtime import as_records
 
-__all__ = ['compute_all', 'make_context', 'list_setters', 'list_computes', 'set_country_initial_debt', 'set_country_name', 'set_growth_baseline', 'set_interest_baseline', 'set_primary_balance_baseline', 'set_shock_magnitudes', 'set_shock_type', 'set_shock_year', 'compute_output_baseline', 'compute_output_delta', 'compute_output_shocked', 'DEFAULT_INPUTS']
+__all__ = [
+    "as_records",
+    "data",
+    "Model",
+    "OutputBaselineInputs",
+    "OutputShockedInputs",
+    "OutputDeltaInputs",
+    "compute_output_baseline",
+    "compute_output_shocked",
+    "compute_output_delta",
+]
+
+from .tensor import Axis, Domain, Series, Tensor, TensorSchema
+__all__ += ['Axis', 'Domain', 'Series', 'Tensor', 'TensorSchema']

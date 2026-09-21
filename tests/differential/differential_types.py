@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
 ATOL = 1e-6
+RTOL = 1e-12
 
 
 @dataclass(frozen=True)
@@ -13,7 +15,7 @@ class Scenario:
     """One identified input configuration plus a stable scenario id."""
 
     id: str
-    inputs: Any
+    inputs: Mapping[str, Any]
     expects_error_values: bool = False
 
 
