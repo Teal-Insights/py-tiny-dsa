@@ -34,7 +34,30 @@ jobs:
         run: uv python install
 
       - name: Install project dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --group graph
+
+      - name: Refresh static graph bootstrap snapshot
+        run: uv run python scripts/write_graph_bootstrap.py
+
+      - name: Point graph UI at remote FormulaEvaluator API
+        env:
+          GRAPH_API_BASE: ${{ vars.GRAPH_API_BASE || secrets.GRAPH_API_BASE }}
+        run: |
+          if [ -n "${GRAPH_API_BASE}" ]; then
+            python - <<'PY'
+          import os
+          from pathlib import Path
+          base = os.environ["GRAPH_API_BASE"].rstrip("/")
+          Path("assets/graph/config.js").write_text(
+              "/** Injected by docs deploy (GRAPH_API_BASE). */\n"
+              f"window.TINY_DSA_GRAPH_API = {base!r};\n",
+              encoding="utf-8",
+          )
+          print(f"wrote assets/graph/config.js → {base}")
+          PY
+          else
+            echo "GRAPH_API_BASE unset; graph UI will use bootstrap.json only on Pages"
+          fi
 
       - name: Build documentation site
         run: uv run --with great-docs great-docs build --project-path .
@@ -44,6 +67,8 @@ jobs:
           mkdir -p great-docs/_site/assets
           cp -a assets/graph great-docs/_site/assets/
           test -f great-docs/_site/assets/graph/index.html
+          test -f great-docs/_site/assets/graph/bootstrap.json
+          test -f great-docs/_site/assets/graph/config.js
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

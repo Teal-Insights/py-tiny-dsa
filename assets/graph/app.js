@@ -1,383 +1,206 @@
 /**
  * Tiny DSA interactive dependency graph.
- * Browser-side evaluator mirrors tiny_dsa.model.Model / internals for the
- * canonical defaults (validated against Python goldens in scripts/check_graph_eval.py).
+ * Loads series topology from GET /api/graph and recomputes via
+ * POST /api/evaluate with backend=formula_evaluator (excel-grapher).
+ * Fall back: ./bootstrap.json for static docs preview when the API is offline.
  */
 (function () {
   "use strict";
 
-  const YEARS = [1, 2, 3, 4, 5];
-  const COUNTRIES = ["Borvelia", "Litellia", "Aurelium"];
-  const SHOCK_PARAMS = ["Growth", "Interest", "Primary balance"];
-
+  const BACKEND = "formula_evaluator";
   const LAYER_ORIGIN_X = 140;
   const LAYER_GAP_X = 280;
   const LAYER_ROW = 78;
   const LAYER_TOP = 70;
 
-  const DEFAULTS = {
-    country_name: "Borvelia",
-    country_initial_debt: { Borvelia: 60, Litellia: 80, Aurelium: 40 },
-    growth_baseline: { 1: 3.5, 2: 3.5, 3: 3.5, 4: 3.5, 5: 3.5 },
-    interest_baseline: { 1: 4, 2: 4, 3: 4, 4: 4, 5: 4 },
-    primary_balance_baseline: { 1: -1, 2: -0.5, 3: 0, 4: 0.5, 5: 1 },
-    shock_year: 2,
-    shock_type: 1,
-    shock_magnitudes: { Growth: -2, Interest: 2, "Primary balance": -1 },
-  };
+  const PREVIEW =
+    typeof document !== "undefined" &&
+    (document.body.classList.contains("preview") ||
+      new URLSearchParams(window.location.search).get("preview") === "1" ||
+      new URLSearchParams(window.location.search).get("preview") === "true");
 
-  /** Series-level dependency edges (producer → consumer). */
-  const SERIES_EDGES = [
-    ["country_name", "initial_debt_resolved"],
-    ["country_initial_debt", "initial_debt_resolved"],
-    ["initial_debt_resolved", "engine_initial_debt_baseline"],
-    ["initial_debt_resolved", "engine_initial_debt_shocked"],
-    ["shock_type", "shock_magnitude_resolved"],
-    ["shock_magnitudes", "shock_magnitude_resolved"],
-    ["shock_year", "shock_active"],
-    ["growth_baseline", "shocked_growth"],
-    ["shock_type", "shocked_growth"],
-    ["shock_magnitude_resolved", "shocked_growth"],
-    ["shock_active", "shocked_growth"],
-    ["interest_baseline", "shocked_interest"],
-    ["shock_type", "shocked_interest"],
-    ["shock_magnitude_resolved", "shocked_interest"],
-    ["shock_active", "shocked_interest"],
-    ["primary_balance_baseline", "shocked_primary_balance"],
-    ["shock_type", "shocked_primary_balance"],
-    ["shock_magnitude_resolved", "shocked_primary_balance"],
-    ["shock_active", "shocked_primary_balance"],
-    ["engine_initial_debt_baseline", "baseline_path_internal"],
-    ["growth_baseline", "baseline_path_internal"],
-    ["interest_baseline", "baseline_path_internal"],
-    ["primary_balance_baseline", "baseline_path_internal"],
-    ["engine_initial_debt_shocked", "shocked_path_internal"],
-    ["shocked_growth", "shocked_path_internal"],
-    ["shocked_interest", "shocked_path_internal"],
-    ["shocked_primary_balance", "shocked_path_internal"],
-    ["baseline_path_internal", "output_baseline"],
-    ["shocked_path_internal", "output_shocked"],
-    ["output_baseline", "output_delta"],
-    ["output_shocked", "output_delta"],
-  ];
+  /** @type {any[]} */
+  let SERIES = [];
+  /** @type {string[][]} */
+  let SERIES_EDGES = [];
+  /** @type {Record<string, any>} */
+  let SERIES_BY_ID = {};
+  /** @type {Record<string, any>} */
+  let DEFAULTS = {};
+  /** @type {Record<string, any>} */
+  let inputs = {};
+  /** @type {Record<string, any>} */
+  let values = {};
+  let selectedId = null;
+  let cy = null;
+  const positionUndo = [];
+  let dragOrigin = null;
+  let apiBase = "";
 
-  const SERIES = [
-    {
-      id: "country_name",
-      role: "input",
-      label: "country_name",
-      sheet: "Inputs",
-      kind: "enum",
-      address: "Inputs!B5",
-      options: COUNTRIES,
-      keys: [null],
-    },
-    {
-      id: "country_initial_debt",
-      role: "input",
-      label: "country_initial_debt",
-      sheet: "Inputs",
-      kind: "country_map",
-      domain: { min: 0, max: 200 },
-      keys: COUNTRIES,
-      addresses: { Borvelia: "Inputs!B10", Litellia: "Inputs!B11", Aurelium: "Inputs!B12" },
-    },
-    {
-      id: "growth_baseline",
-      role: "input",
-      label: "growth_baseline",
-      sheet: "Inputs",
-      kind: "year_map",
-      domain: { min: -10, max: 15 },
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Inputs!${"CDEFG"[i]}16`])),
-    },
-    {
-      id: "interest_baseline",
-      role: "input",
-      label: "interest_baseline",
-      sheet: "Inputs",
-      kind: "year_map",
-      domain: { min: 0, max: 20 },
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Inputs!${"CDEFG"[i]}17`])),
-    },
-    {
-      id: "primary_balance_baseline",
-      role: "input",
-      label: "primary_balance_baseline",
-      sheet: "Inputs",
-      kind: "year_map",
-      domain: { min: -15, max: 15 },
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Inputs!${"CDEFG"[i]}18`])),
-    },
-    {
-      id: "shock_year",
-      role: "input",
-      label: "shock_year",
-      sheet: "Inputs",
-      kind: "int",
-      address: "Inputs!B21",
-      domain: { min: 1, max: 5 },
-      keys: [null],
-    },
-    {
-      id: "shock_type",
-      role: "input",
-      label: "shock_type",
-      sheet: "Inputs",
-      kind: "enum_int",
-      address: "Inputs!B22",
-      options: [1, 2, 3],
-      optionLabels: { 1: "1 · growth", 2: "2 · interest", 3: "3 · primary balance" },
-      keys: [null],
-    },
-    {
-      id: "shock_magnitudes",
-      role: "input",
-      label: "shock_magnitudes",
-      sheet: "Inputs",
-      kind: "shock_map",
-      domain: { min: -30, max: 30 },
-      keys: SHOCK_PARAMS,
-      addresses: {
-        Growth: "Inputs!B26",
-        Interest: "Inputs!C26",
-        "Primary balance": "Inputs!D26",
-      },
-    },
-    {
-      id: "initial_debt_resolved",
-      role: "internal",
-      label: "initial_debt_resolved",
-      sheet: "Inputs",
-      kind: "scalar",
-      address: "Inputs!B6",
-      keys: [null],
-    },
-    {
-      id: "engine_initial_debt_baseline",
-      role: "internal",
-      label: "engine_initial_debt_baseline",
-      sheet: "Engine",
-      kind: "scalar",
-      address: "Engine!B6",
-      keys: [null],
-    },
-    {
-      id: "engine_initial_debt_shocked",
-      role: "internal",
-      label: "engine_initial_debt_shocked",
-      sheet: "Engine",
-      kind: "scalar",
-      address: "Engine!B20",
-      keys: [null],
-    },
-    {
-      id: "shock_magnitude_resolved",
-      role: "internal",
-      label: "shock_magnitude_resolved",
-      sheet: "Engine",
-      kind: "scalar",
-      address: "Engine!B9",
-      keys: [null],
-    },
-    {
-      id: "shock_active",
-      role: "internal",
-      label: "shock_active",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}10`])),
-    },
-    {
-      id: "shocked_growth",
-      role: "internal",
-      label: "shocked_growth",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}14`])),
-    },
-    {
-      id: "shocked_interest",
-      role: "internal",
-      label: "shocked_interest",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}15`])),
-    },
-    {
-      id: "shocked_primary_balance",
-      role: "internal",
-      label: "shocked_primary_balance",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}16`])),
-    },
-    {
-      id: "baseline_path_internal",
-      role: "internal",
-      label: "baseline_path_internal",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}6`])),
-    },
-    {
-      id: "shocked_path_internal",
-      role: "internal",
-      label: "shocked_path_internal",
-      sheet: "Engine",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Engine!${"CDEFG"[i]}20`])),
-    },
-    {
-      id: "output_baseline",
-      role: "output",
-      label: "output_baseline",
-      sheet: "Outputs",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Outputs!${"BCDEF"[i]}12`])),
-    },
-    {
-      id: "output_shocked",
-      role: "output",
-      label: "output_shocked",
-      sheet: "Outputs",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Outputs!${"BCDEF"[i]}13`])),
-    },
-    {
-      id: "output_delta",
-      role: "output",
-      label: "output_delta",
-      sheet: "Outputs",
-      kind: "year_map",
-      keys: YEARS,
-      addresses: Object.fromEntries(YEARS.map((y, i) => [y, `Outputs!${"BCDEF"[i]}14`])),
-    },
-  ];
+  function trimSlash(url) {
+    return String(url || "").replace(/\/+$/, "");
+  }
 
-  const SERIES_BY_ID = Object.fromEntries(SERIES.map((s) => [s.id, s]));
+  /**
+   * Resolve remote FormulaEvaluator API base (e.g. Railway).
+   * Order: ?api=… → meta[name=tiny-dsa-graph-api] → window.TINY_DSA_GRAPH_API
+   * → config.js TINY_DSA_GRAPH_API. Same-origin /api is tried next by loadBootstrap.
+   */
+  function configuredApiBase() {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get("api");
+    if (fromQuery) return trimSlash(fromQuery);
+    const meta = document.querySelector('meta[name="tiny-dsa-graph-api"]');
+    if (meta && meta.content) return trimSlash(meta.content);
+    if (typeof window.TINY_DSA_GRAPH_API === "string" && window.TINY_DSA_GRAPH_API) {
+      return trimSlash(window.TINY_DSA_GRAPH_API);
+    }
+    return "";
+  }
+
+  function apiUrl(path) {
+    const base = trimSlash(apiBase);
+    const suffix = path.startsWith("/") ? path : `/${path}`;
+    return base ? `${base}${suffix}` : suffix;
+  }
+
+  function cloneMap(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return { ...value };
+    }
+    return value;
+  }
 
   function cloneDefaults() {
-    return {
-      country_name: DEFAULTS.country_name,
-      country_initial_debt: { ...DEFAULTS.country_initial_debt },
-      growth_baseline: { ...DEFAULTS.growth_baseline },
-      interest_baseline: { ...DEFAULTS.interest_baseline },
-      primary_balance_baseline: { ...DEFAULTS.primary_balance_baseline },
-      shock_year: DEFAULTS.shock_year,
-      shock_type: DEFAULTS.shock_type,
-      shock_magnitudes: { ...DEFAULTS.shock_magnitudes },
-    };
+    const next = {};
+    for (const [key, value] of Object.entries(DEFAULTS)) {
+      next[key] = cloneMap(value);
+    }
+    return next;
   }
 
-  function choose(shockType, a, b, c) {
-    if (shockType === 1) return a;
-    if (shockType === 2) return b;
-    return c;
-  }
-
-  function debtStep(prev, r, g, pb) {
-    return (prev * (1 + r / 100)) / (1 + g / 100) - pb;
-  }
-
-  /** Evaluate the full model; returns map seriesId → scalar | {key: value}. */
-  function evaluate(inputs) {
-    const initial_debt_resolved = inputs.country_initial_debt[inputs.country_name];
-    const engine_initial_debt_baseline = initial_debt_resolved;
-    const engine_initial_debt_shocked = initial_debt_resolved;
-    const shockKey = SHOCK_PARAMS[inputs.shock_type - 1];
-    const shock_magnitude_resolved = inputs.shock_magnitudes[shockKey];
-
-    const shock_active = {};
-    const shocked_growth = {};
-    const shocked_interest = {};
-    const shocked_primary_balance = {};
-    const baseline_path_internal = {};
-    const shocked_path_internal = {};
-
-    for (const y of YEARS) {
-      const active = y >= inputs.shock_year ? 1 : 0;
-      shock_active[y] = active;
-      shocked_growth[y] =
-        inputs.growth_baseline[y] +
-        choose(inputs.shock_type, shock_magnitude_resolved, 0, 0) * active;
-      shocked_interest[y] =
-        inputs.interest_baseline[y] +
-        choose(inputs.shock_type, 0, shock_magnitude_resolved, 0) * active;
-      shocked_primary_balance[y] =
-        inputs.primary_balance_baseline[y] +
-        choose(inputs.shock_type, 0, 0, shock_magnitude_resolved) * active;
-
-      if (y === 1) {
-        baseline_path_internal[y] = debtStep(
-          engine_initial_debt_baseline,
-          inputs.interest_baseline[y],
-          inputs.growth_baseline[y],
-          inputs.primary_balance_baseline[y]
-        );
-        shocked_path_internal[y] = debtStep(
-          engine_initial_debt_shocked,
-          shocked_interest[y],
-          shocked_growth[y],
-          shocked_primary_balance[y]
-        );
-      } else {
-        baseline_path_internal[y] = debtStep(
-          baseline_path_internal[y - 1],
-          inputs.interest_baseline[y],
-          inputs.growth_baseline[y],
-          inputs.primary_balance_baseline[y]
-        );
-        shocked_path_internal[y] = debtStep(
-          shocked_path_internal[y - 1],
-          shocked_interest[y],
-          shocked_growth[y],
-          shocked_primary_balance[y]
-        );
+  /** Coerce JSON string keys back to series key types (years are ints). */
+  function normalizeSeriesValue(series, raw) {
+    if (raw == null) return raw;
+    if (!series || series.keys.length === 1 && series.keys[0] == null) {
+      return raw;
+    }
+    const out = {};
+    for (const key of series.keys) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) {
+        out[key] = raw[key];
+      } else if (Object.prototype.hasOwnProperty.call(raw, String(key))) {
+        out[key] = raw[String(key)];
       }
     }
+    return out;
+  }
 
-    const output_baseline = { ...baseline_path_internal };
-    const output_shocked = { ...shocked_path_internal };
-    const output_delta = {};
-    for (const y of YEARS) {
-      output_delta[y] = output_shocked[y] - output_baseline[y];
+  function normalizeValuesPayload(rawValues) {
+    const out = {};
+    for (const [id, raw] of Object.entries(rawValues || {})) {
+      const series = SERIES_BY_ID[id];
+      out[id] = normalizeSeriesValue(series, raw);
     }
+    return out;
+  }
 
-    return {
-      country_name: inputs.country_name,
-      country_initial_debt: { ...inputs.country_initial_debt },
-      growth_baseline: { ...inputs.growth_baseline },
-      interest_baseline: { ...inputs.interest_baseline },
-      primary_balance_baseline: { ...inputs.primary_balance_baseline },
-      shock_year: inputs.shock_year,
-      shock_type: inputs.shock_type,
-      shock_magnitudes: { ...inputs.shock_magnitudes },
-      initial_debt_resolved,
-      engine_initial_debt_baseline,
-      engine_initial_debt_shocked,
-      shock_magnitude_resolved,
-      shock_active,
-      shocked_growth,
-      shocked_interest,
-      shocked_primary_balance,
-      baseline_path_internal,
-      shocked_path_internal,
-      output_baseline,
-      output_shocked,
-      output_delta,
-    };
+  function normalizeInputsPayload(rawInputs) {
+    const out = {};
+    for (const [id, raw] of Object.entries(rawInputs || {})) {
+      const series = SERIES_BY_ID[id];
+      out[id] = normalizeSeriesValue(series, raw);
+    }
+    return out;
+  }
+
+  async function fetchJson(url, options) {
+    const response = await fetch(url, options);
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_err) {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message =
+        (payload && (payload.error || payload.message)) ||
+        `HTTP ${response.status}`;
+      const err = new Error(message);
+      err.status = response.status;
+      err.payload = payload;
+      throw err;
+    }
+    return payload;
+  }
+
+  async function loadBootstrap() {
+    const configured = configuredApiBase();
+    const candidates = [];
+    if (configured) {
+      candidates.push({
+        href: `${configured}/api/graph?backend=${encodeURIComponent(BACKEND)}`,
+        base: configured,
+      });
+    }
+    candidates.push(
+      {
+        href: new URL(
+          `/api/graph?backend=${encodeURIComponent(BACKEND)}`,
+          window.location.origin
+        ).href,
+        base: window.location.origin,
+      },
+      {
+        href: new URL(
+          `./api/graph?backend=${encodeURIComponent(BACKEND)}`,
+          window.location.href
+        ).href,
+        base: null,
+      },
+      { href: new URL("./bootstrap.json", window.location.href).href, base: "" }
+    );
+    let lastError = null;
+    for (const candidate of candidates) {
+      try {
+        const data = await fetchJson(candidate.href);
+        if (candidate.base === null) {
+          const absolute = new URL(candidate.href);
+          apiBase = trimSlash(absolute.href.replace(/\/api\/graph\?.*$/, ""));
+        } else {
+          apiBase = candidate.base;
+        }
+        return data;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error("Could not load graph bootstrap");
+  }
+
+  async function evaluateRemote(nextInputs) {
+    if (!apiBase && !window.location.pathname.includes("api")) {
+      // Static bootstrap-only mode (docs preview): no live recompute.
+      throw new Error(
+        "Live recompute needs the FormulaEvaluator API. Deploy to Railway and set GRAPH_API_BASE, or run: uv run python scripts/serve_graph_api.py"
+      );
+    }
+    const url = apiUrl(`/api/evaluate`);
+    const payload = await fetchJson(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backend: BACKEND, inputs: nextInputs }),
+    });
+    return normalizeValuesPayload(payload.values);
+  }
+
+  function applyBootstrap(data) {
+    SERIES = data.nodes || [];
+    SERIES_EDGES = data.edges || [];
+    SERIES_BY_ID = Object.fromEntries(SERIES.map((s) => [s.id, s]));
+    DEFAULTS = normalizeInputsPayload(data.defaults || {});
+    inputs = cloneDefaults();
+    values = normalizeValuesPayload(data.values || {});
   }
 
   function formatValue(value) {
@@ -390,7 +213,7 @@
   }
 
   function valuesText(series, allValues) {
-    const raw = allValues[series.id];
+    const raw = normalizeSeriesValue(series, allValues[series.id]);
     if (series.keys.length === 1 && series.keys[0] == null) {
       return formatValue(raw);
     }
@@ -400,7 +223,10 @@
   function addressText(series) {
     if (series.address) return series.address;
     if (series.addresses) {
-      return series.keys.map((key) => series.addresses[key]).join(", ");
+      return series.keys.map((key) => {
+        const addresses = series.addresses;
+        return addresses[key] ?? addresses[String(key)];
+      }).join(", ");
     }
     return "";
   }
@@ -441,12 +267,6 @@
     return elements;
   }
 
-  /**
-   * Longest-path layering on the series DAG.
-   * layer(v) = 0 for sources; otherwise 1 + max(layer(u)) over edges u→v.
-   * Every edge then goes strictly forward (layer(u) < layer(v)), so no
-   * same-column edges — unlike the semantic input/internal/output buckets.
-   */
   function computeLayers() {
     const ids = SERIES.map((s) => s.id);
     const preds = Object.fromEntries(ids.map((id) => [id, []]));
@@ -457,9 +277,7 @@
     }
 
     const layer = Object.fromEntries(ids.map((id) => [id, 0]));
-    const indegree = Object.fromEntries(
-      ids.map((id) => [id, preds[id].length])
-    );
+    const indegree = Object.fromEntries(ids.map((id) => [id, preds[id].length]));
     const queue = ids.filter((id) => indegree[id] === 0);
     let seen = 0;
     while (queue.length) {
@@ -478,7 +296,6 @@
     return layer;
   }
 
-  /** Order nodes in a layer by average neighbor layer-index × rank (barycenter). */
   function orderWithinLayers(layersById) {
     const maxLayer = Math.max(...Object.values(layersById));
     const columns = Array.from({ length: maxLayer + 1 }, () => []);
@@ -500,16 +317,13 @@
       });
     });
 
-    // Two sweeps: left→right then right→left, sorting by neighbor barycenters.
     for (let sweep = 0; sweep < 2; sweep += 1) {
       for (let L = 1; L <= maxLayer; L += 1) {
         columns[L].sort((a, b) => {
           const bary = (id) => {
             const neighbors = preds[id];
             if (!neighbors.length) return rank[id];
-            return (
-              neighbors.reduce((sum, n) => sum + rank[n], 0) / neighbors.length
-            );
+            return neighbors.reduce((sum, n) => sum + rank[n], 0) / neighbors.length;
           };
           return bary(a) - bary(b);
         });
@@ -522,9 +336,7 @@
           const bary = (id) => {
             const neighbors = succs[id];
             if (!neighbors.length) return rank[id];
-            return (
-              neighbors.reduce((sum, n) => sum + rank[n], 0) / neighbors.length
-            );
+            return neighbors.reduce((sum, n) => sum + rank[n], 0) / neighbors.length;
           };
           return bary(a) - bary(b);
         });
@@ -539,7 +351,6 @@
   function applyNeuralLayout(cyInstance) {
     const layersById = computeLayers();
     if (!layersById) {
-      // Cycle fallback: semantic role columns (may retain same-layer edges).
       const columns = { input: [], internal: [], output: [] };
       for (const series of SERIES) columns[series.role].push(series.id);
       const roleX = { input: 140, internal: 520, output: 900 };
@@ -581,23 +392,15 @@
         setTimeout(() => node.removeClass("changed"), 700);
       }
     }
-    // Refresh HTML value overlays after data changes.
     cyInstance.nodes().forEach((node) => node.trigger("position"));
   }
-
-  let inputs = cloneDefaults();
-  let values = evaluate(inputs);
-  let selectedId = null;
-  let cy = null;
-  const positionUndo = [];
-  let dragOrigin = null;
 
   function toast(message) {
     const el = document.getElementById("toast");
     el.textContent = message;
     el.classList.add("show");
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.classList.remove("show"), 1800);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2200);
   }
 
   function downstreamOf(seriesId) {
@@ -615,17 +418,27 @@
     return out;
   }
 
-  function recompute(changedSeriesId) {
-    values = evaluate(inputs);
-    patchValues(cy, values, changedSeriesId ? downstreamOf(changedSeriesId) : null);
-    if (selectedId) renderSide(selectedId);
+  async function recompute(changedSeriesId) {
+    try {
+      values = await evaluateRemote(inputs);
+      patchValues(cy, values, changedSeriesId ? downstreamOf(changedSeriesId) : null);
+      if (selectedId) renderSide(selectedId);
+    } catch (err) {
+      console.error(err);
+      toast(err.message || "Evaluate failed");
+    }
+  }
+
+  function optionLabel(series, option) {
+    const labels = series.optionLabels || {};
+    return labels[option] ?? labels[String(option)] ?? String(option);
   }
 
   function renderSide(nodeId) {
     const panel = document.getElementById("side");
     if (!nodeId) {
       panel.innerHTML =
-        '<p class="empty">Select a series node. Amber inputs are editable (comma-separated values). Drag nodes to rearrange; Ctrl+Z undoes a move.</p>';
+        '<p class="empty">Select a series node. Amber inputs are editable (comma-separated values). Drag nodes to rearrange; Ctrl+Z undoes a move. Values come from excel-grapher FormulaEvaluator.</p>';
       selectedId = null;
       return;
     }
@@ -639,9 +452,7 @@
     const editable = series.role === "input";
     const vals = valuesText(series, values);
     const keysHint =
-      series.keys[0] == null
-        ? "scalar"
-        : series.keys.join(", ");
+      series.keys[0] == null ? "scalar" : series.keys.join(", ");
 
     let editor = "";
     if (editable) {
@@ -656,9 +467,10 @@
         editor = `<label for="edit-value">Value</label><select id="edit-value">${series.options
           .map(
             (o) =>
-              `<option value="${o}" ${o === inputs.shock_type ? "selected" : ""}>${
-                series.optionLabels[o]
-              }</option>`
+              `<option value="${o}" ${Number(o) === Number(inputs.shock_type) ? "selected" : ""}>${optionLabel(
+                series,
+                o
+              )}</option>`
           )
           .join("")}</select>`;
       } else if (series.kind === "int") {
@@ -681,10 +493,12 @@
 
     const apply = document.getElementById("apply-edit");
     if (apply) {
-      apply.addEventListener("click", () => {
+      apply.addEventListener("click", async () => {
         const raw = document.getElementById("edit-value").value;
         if (!commitEdit(series, raw)) return;
-        recompute(series.id);
+        apply.disabled = true;
+        await recompute(series.id);
+        apply.disabled = false;
         toast(`Updated ${series.label}`);
       });
     }
@@ -699,7 +513,7 @@
       }
       if (series.kind === "enum_int") {
         const n = Number(raw);
-        if (!series.options.includes(n)) throw new Error("Invalid shock type");
+        if (!series.options.map(Number).includes(n)) throw new Error("Invalid shock type");
         inputs.shock_type = n;
         return true;
       }
@@ -776,12 +590,6 @@
       .update();
   }
 
-  const PREVIEW =
-    typeof document !== "undefined" &&
-    (document.body.classList.contains("preview") ||
-      new URLSearchParams(window.location.search).get("preview") === "1" ||
-      new URLSearchParams(window.location.search).get("preview") === "true");
-
   function initCy() {
     cy = cytoscape({
       container: document.getElementById("cy"),
@@ -850,7 +658,6 @@
           style: {
             width: 2,
             "curve-style": "bezier",
-            // Relative to node centre: 50% x = right edge, -50% x = left edge.
             "source-endpoint": "50% 0",
             "target-endpoint": "-50% 0",
             "target-arrow-shape": "triangle",
@@ -908,10 +715,16 @@
     });
   }
 
-  function resetAll() {
+  async function resetAll() {
     inputs = cloneDefaults();
-    values = evaluate(inputs);
     positionUndo.length = 0;
+    try {
+      values = await evaluateRemote(inputs);
+    } catch (err) {
+      console.error(err);
+      toast(err.message || "Reset evaluate failed");
+      return;
+    }
     cy.elements().remove();
     cy.add(buildElements(values));
     applyNeuralLayout(cy);
@@ -931,33 +744,53 @@
 
   const root = typeof globalThis !== "undefined" ? globalThis : window;
   root.TinyDsaGraph = {
-    evaluate,
-    DEFAULTS,
+    backend: BACKEND,
+    get SERIES() {
+      return SERIES;
+    },
+    get DEFAULTS() {
+      return DEFAULTS;
+    },
     cloneDefaults,
-    _goldens: evaluate(cloneDefaults()),
+    evaluateRemote,
   };
 
-  const cyEl = typeof document !== "undefined" ? document.getElementById("cy") : null;
-  if (cyEl && typeof cytoscape === "function") {
-    if (!PREVIEW) {
-      document.getElementById("btn-reset").addEventListener("click", resetAll);
-      document.getElementById("btn-fit").addEventListener("click", fitGraph);
-      document.addEventListener("keydown", (event) => {
-        const key = event.key.toLowerCase();
-        if (!(event.ctrlKey || event.metaKey) || key !== "z" || event.shiftKey) return;
-        const tag = (event.target && event.target.tagName) || "";
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-        event.preventDefault();
-        undoMove();
-      });
-    }
+  async function main() {
+    const cyEl = typeof document !== "undefined" ? document.getElementById("cy") : null;
+    if (!cyEl || typeof cytoscape !== "function") return;
+
+    cyEl.innerHTML =
+      '<p style="padding:1rem;font:14px system-ui;color:#57534e;">Loading FormulaEvaluator graph…</p>';
+
     try {
+      const data = await loadBootstrap();
+      applyBootstrap(data);
+      cyEl.innerHTML = "";
+      if (!PREVIEW) {
+        document.getElementById("btn-reset").addEventListener("click", () => {
+          resetAll();
+        });
+        document.getElementById("btn-fit").addEventListener("click", fitGraph);
+        document.addEventListener("keydown", (event) => {
+          const key = event.key.toLowerCase();
+          if (!(event.ctrlKey || event.metaKey) || key !== "z" || event.shiftKey) return;
+          const tag = (event.target && event.target.tagName) || "";
+          if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+          event.preventDefault();
+          undoMove();
+        });
+      }
       initCy();
       if (!PREVIEW) renderSide(null);
+      if (!apiBase && !PREVIEW) {
+        toast("API offline — edits need serve_graph_api.py");
+      }
     } catch (err) {
       console.error("Tiny DSA graph failed to initialize", err);
       cyEl.innerHTML =
-        '<p style="padding:1rem;font:14px system-ui;color:#b91c1c;">Graph failed to load. Check the browser console for details.</p>';
+        '<p style="padding:1rem;font:14px system-ui;color:#b91c1c;">Graph failed to load. Serve with <code>uv run python scripts/serve_graph_api.py</code> (FormulaEvaluator) or provide <code>bootstrap.json</code>.</p>';
     }
   }
+
+  main();
 })();

@@ -418,6 +418,21 @@ wheels = [
 ]
 
 [[package]]
+name = "excel-grapher"
+version = "23.6.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastpyxl" },
+    { name = "jsonschema" },
+    { name = "pyyaml" },
+    { name = "ruamel-yaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/8d/43f1790baa6186a85b5a26e2386b890d07c1d335a8cab9493f28b5d53432/excel_grapher-23.6.7.tar.gz", hash = "sha256:0e26cb592178b8576c0b705cc072e565c69e77ca1418cc547810b20e76cf60a2", size = 6318872, upload-time = "2026-09-22T16:47:41.646Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/14/fb/0cc5235a8c0c692a94c35454fed1443d2dbddcd00b6037be792012a0fcdb/excel_grapher-23.6.7-py3-none-any.whl", hash = "sha256:6f619aa61eb92902b1baf43191a3346cebbdac2975dac3dbccda12f9e6fcbea0", size = 640639, upload-time = "2026-09-22T16:47:39.46Z" },
+]
+
+[[package]]
 name = "executing"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -437,14 +452,14 @@ wheels = [
 
 [[package]]
 name = "fastpyxl"
-version = "1.0.9"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "et-xmlfile" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/20/ad/4d20a388bbb4bc431a94d9f679a07f2ec799fbcaebf9615c61ba9aa0dd72/fastpyxl-1.0.9.tar.gz", hash = "sha256:2ac86e239119094c6d2b514053b5f40904beb462feb2483ea9a052f493c1eac0", size = 212051, upload-time = "2026-04-22T22:56:44.109Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/fd/f0bab804f25c7b9d7908fb6bc9752638e0c721a3cc3f0c9096d1a137f614/fastpyxl-1.1.0.tar.gz", hash = "sha256:34ee0ced98eb8aefb7a444d91b75c88cde4d93c11767caa6725053cd808aa169", size = 219436, upload-time = "2026-08-17T18:59:06.528Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/92/cc3cf6d17beb02fe7a46677f81b24ded457404da012d43e07d5051401920/fastpyxl-1.0.9-py3-none-any.whl", hash = "sha256:894c3b16352bd1ca3fe26cc002df2524fd050e3786c09540b44deeb63c2d6f64", size = 287075, upload-time = "2026-04-22T22:56:42.381Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/ae/1bb37a4e7b8297e8c238d682d3911b83dd2b774dc7e6950d7b17f0f51453/fastpyxl-1.1.0-py3-none-any.whl", hash = "sha256:e0034950e827b52ef91abe56c83e781d44daa3a4aadb41d19bb0f5d627f7be17", size = 293569, upload-time = "2026-08-17T18:59:05.054Z" },
 ]
 
 [[package]]
@@ -564,6 +579,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cd/63/9496c57188a2ee585e0f1db071d75089a11e98aa86eb99d9d7618fc1edce/idna-3.18.tar.gz", hash = "sha256:ffb385a7e039654cef1ab9ef32c6fafe283c0c0467bba1d9029738ce4a14a848", size = 196711, upload-time = "2026-06-02T14:34:07.794Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/5e/d4e9f1a599fb8e573b7b87160658329fbf28d19eac2718f51fc3def3aa5a/idna-3.18-py3-none-any.whl", hash = "sha256:7f952cbe720b688055e3f87de14f5c3e5fdaa8bc3928985c4077ca689de849a2", size = 65455, upload-time = "2026-06-02T14:34:06.319Z" },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
 ]
 
 [[package]]
@@ -1435,6 +1459,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
 name = "polars"
 version = "1.41.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1575,6 +1608,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
 
 [[package]]
@@ -1882,6 +1931,15 @@ wheels = [
 ]
 
 [[package]]
+name = "ruamel-yaml"
+version = "0.19.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel_yaml-0.19.1.tar.gz", hash = "sha256:53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993", size = 142709, upload-time = "2026-01-02T16:50:31.84Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/0c/51f6841f1d84f404f92463fc2b1ba0da357ca1e3db6b7fbda26956c3b82a/ruamel_yaml-0.19.1-py3-none-any.whl", hash = "sha256:27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93", size = 118102, upload-time = "2026-01-02T16:50:29.201Z" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.15.15"
 source = { registry = "https://pypi.org/simple" }
@@ -1987,6 +2045,10 @@ dev = [
     { name = "polars" },
     { name = "quarto" },
 ]
+graph = [
+    { name = "excel-grapher" },
+    { name = "pytest" },
+]
 validation = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "xlwings" },
@@ -1994,7 +2056,7 @@ validation = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastpyxl" },
+    { name = "fastpyxl", specifier = ">=1.1.0" },
     { name = "numpy" },
 ]
 
@@ -2005,6 +2067,10 @@ dev = [
     { name = "pandas" },
     { name = "polars" },
     { name = "quarto", specifier = ">=0.1.0" },
+]
+graph = [
+    { name = "excel-grapher", specifier = ">=15.0.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
 ]
 validation = [
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311" },
