@@ -3,6 +3,69 @@ title: "Tiny DSA"
 subtitle: "A practical guide for economists"
 resources:
   - ../assets/graph/**
+include-in-header:
+  - text: |
+      <style>
+      /* Keep title + lead clear of the Great Docs meta sidebar (Links / AI / Meta).
+         Avoid column-page-* on this page: it adds page-full and collapses the
+         margin track that .gd-meta-sidebar is meant to sit in. */
+      @media (min-width: 992px) {
+        #title-block-header,
+        #quarto-document-content > p:first-of-type {
+          max-width: 42rem;
+          padding-right: 0.5rem;
+        }
+        .gd-meta-sidebar {
+          z-index: 2;
+        }
+      }
+      a.tiny-dsa-graph-preview {
+        position: relative;
+        display: block;
+        max-width: 42rem;
+        margin: 0.75rem 0 1rem;
+        border: 1px solid #e7e5e4;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #f7f5f1;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      a.tiny-dsa-graph-preview:hover,
+      a.tiny-dsa-graph-preview:focus-visible {
+        border-color: #0f766e;
+        box-shadow: 0 4px 14px rgba(15, 118, 110, 0.12);
+        outline: none;
+      }
+      a.tiny-dsa-graph-preview iframe {
+        display: block;
+        width: 100%;
+        height: min(42vh, 360px);
+        border: 0;
+        pointer-events: none;
+        background: #f7f5f1;
+      }
+      a.tiny-dsa-graph-preview .tiny-dsa-graph-cta {
+        position: absolute;
+        inset: auto 0 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.65rem 0.9rem;
+        background: linear-gradient(180deg, transparent, rgba(28, 25, 23, 0.72) 35%);
+        color: #fff;
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+      a.tiny-dsa-graph-preview .tiny-dsa-graph-cta span.hint {
+        font-weight: 500;
+        opacity: 0.9;
+        font-size: 0.8rem;
+      }
+      </style>
 ---
 
 Tiny DSA is a Python reimplementation of the small Excel workbook described in
@@ -37,37 +100,54 @@ policy decisions without a substantially richer model and independent review.
 
 Each node is one bound series. Columns are **topological layers** (longest
 path in the dependency DAG), so edges only run forward between columns — not
-within a layer. Node colors still mark input / internal / output. Values appear
-as a comma-separated list. Amber nodes are editable; drag to rearrange and use
-Ctrl+Z to undo a move. Edits recompute like `tiny_dsa.model.Model`.
+within a layer. Node colors mark input / internal / output. Click the diagram
+to open the fullscreen interactive explorer (edit amber inputs, drag nodes,
+Ctrl+Z undo).
 
-::: {.column-page-inset-right}
 ```{=html}
-<iframe
-  id="tiny-dsa-graph-frame"
-  title="Tiny DSA interactive dependency graph"
-  style="width:100%;height:min(80vh,720px);border:1px solid #e7e5e4;border-radius:8px;background:#f7f5f1;"
-  loading="lazy"
-></iframe>
+<a
+  class="tiny-dsa-graph-preview"
+  id="tiny-dsa-graph-preview"
+  href="assets/graph/index.html"
+  target="_blank"
+  rel="noopener"
+  aria-label="Open the interactive Tiny DSA dependency graph"
+>
+  <iframe
+    id="tiny-dsa-graph-frame"
+    title="Tiny DSA dependency graph preview"
+    loading="lazy"
+    tabindex="-1"
+    aria-hidden="true"
+  ></iframe>
+  <div class="tiny-dsa-graph-cta">
+    <span>Open interactive graph</span>
+    <span class="hint">Edit inputs · pan · zoom</span>
+  </div>
+</a>
 <script>
 (function () {
+  var link = document.getElementById("tiny-dsa-graph-preview");
   var frame = document.getElementById("tiny-dsa-graph-frame");
-  if (!frame) return;
+  if (!link || !frame) return;
   // Great Docs publishes the app at site-root assets/graph/.
-  // Prefer ../assets when this page lives under /user-guide/, else ./assets.
   var underGuide = /\/user-guide\//.test(location.pathname);
-  var candidates = underGuide
-    ? ["../assets/graph/index.html", "assets/graph/index.html"]
-    : ["assets/graph/index.html", "../assets/graph/index.html"];
+  var bases = underGuide
+    ? ["../assets/graph/", "assets/graph/"]
+    : ["assets/graph/", "../assets/graph/"];
+  function apply(base) {
+    link.href = new URL(base + "index.html", document.baseURI).href;
+    frame.src = new URL(base + "index.html?preview=1", document.baseURI).href;
+  }
   function tryNext(i) {
-    if (i >= candidates.length) {
-      frame.src = new URL(candidates[0], document.baseURI).href;
+    if (i >= bases.length) {
+      apply(bases[0]);
       return;
     }
-    var url = new URL(candidates[i], document.baseURI).href;
-    fetch(url, { method: "GET", cache: "no-store" })
+    var probe = new URL(bases[i] + "index.html", document.baseURI).href;
+    fetch(probe, { method: "GET", cache: "no-store" })
       .then(function (res) {
-        if (res.ok) frame.src = url;
+        if (res.ok) apply(bases[i]);
         else tryNext(i + 1);
       })
       .catch(function () { tryNext(i + 1); });
@@ -76,14 +156,6 @@ Ctrl+Z to undo a move. Edits recompute like `tiny_dsa.model.Model`.
 })();
 </script>
 ```
-:::
-
-::: {.callout-note}
-Drag to pan, scroll to zoom, click a series for details, and double-click an
-amber input to edit comma-separated values. Ctrl+Z undoes node moves. Use
-**Reset defaults** inside the frame to restore the workbook snapshot.
-[Open the graph full page](assets/graph/index.html).
-:::
 
 ## Start here
 

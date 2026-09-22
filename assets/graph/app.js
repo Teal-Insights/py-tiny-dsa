@@ -776,10 +776,20 @@
       .update();
   }
 
+  const PREVIEW =
+    typeof document !== "undefined" &&
+    (document.body.classList.contains("preview") ||
+      new URLSearchParams(window.location.search).get("preview") === "1" ||
+      new URLSearchParams(window.location.search).get("preview") === "true");
+
   function initCy() {
     cy = cytoscape({
       container: document.getElementById("cy"),
       elements: buildElements(values),
+      autoungrabify: PREVIEW,
+      userPanningEnabled: !PREVIEW,
+      userZoomingEnabled: !PREVIEW,
+      boxSelectionEnabled: false,
       style: [
         {
           selector: "node.series",
@@ -864,7 +874,9 @@
     } catch (err) {
       console.warn("HTML labels unavailable; using native labels", err);
     }
-    cy.fit(undefined, 48);
+    cy.fit(undefined, PREVIEW ? 28 : 48);
+
+    if (PREVIEW) return;
 
     cy.on("tap", "node.series", (evt) => {
       renderSide(evt.target.id());
@@ -927,19 +939,21 @@
 
   const cyEl = typeof document !== "undefined" ? document.getElementById("cy") : null;
   if (cyEl && typeof cytoscape === "function") {
-    document.getElementById("btn-reset").addEventListener("click", resetAll);
-    document.getElementById("btn-fit").addEventListener("click", fitGraph);
-    document.addEventListener("keydown", (event) => {
-      const key = event.key.toLowerCase();
-      if (!(event.ctrlKey || event.metaKey) || key !== "z" || event.shiftKey) return;
-      const tag = (event.target && event.target.tagName) || "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      event.preventDefault();
-      undoMove();
-    });
+    if (!PREVIEW) {
+      document.getElementById("btn-reset").addEventListener("click", resetAll);
+      document.getElementById("btn-fit").addEventListener("click", fitGraph);
+      document.addEventListener("keydown", (event) => {
+        const key = event.key.toLowerCase();
+        if (!(event.ctrlKey || event.metaKey) || key !== "z" || event.shiftKey) return;
+        const tag = (event.target && event.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        event.preventDefault();
+        undoMove();
+      });
+    }
     try {
       initCy();
-      renderSide(null);
+      if (!PREVIEW) renderSide(null);
     } catch (err) {
       console.error("Tiny DSA graph failed to initialize", err);
       cyEl.innerHTML =
