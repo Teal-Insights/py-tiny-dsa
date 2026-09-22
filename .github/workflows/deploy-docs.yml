@@ -39,6 +39,12 @@ jobs:
       - name: Build documentation site
         run: uv run --with great-docs great-docs build --project-path .
 
+      - name: Ensure interactive graph assets are published
+        run: |
+          mkdir -p great-docs/_site/assets
+          cp -a assets/graph great-docs/_site/assets/
+          test -f great-docs/_site/assets/graph/index.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
         with:
