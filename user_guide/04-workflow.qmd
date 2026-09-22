@@ -80,10 +80,11 @@ For this package the key is `TIME_PERIOD` and the domain is `(1, 2, 3, 4, 5)`.
 The API fails closed on malformed series. A two-value growth series, for
 example, cannot be published against the required five-year schema rather
 than silently padding the scenario.
-An unknown country follows Excel lookup semantics and returns `#N/A` in the
-output path. Keep country names aligned with the profile names:
+Likewise, `country_name`, `shock_year`, and `shock_type` are validated before
+calculation. An unknown country or an out-of-range shock setting raises
+`ValueError`; keep country names aligned with the profile names:
 `Borvelia`, `Litellia`, and `Aurelium`.
 
-The package preserves Excel-style error codes as strings where a calculation
-cell cannot produce a numeric result. Analysts should check for strings before
-performing downstream numeric aggregation.
+Some workbook-style calculation errors can still be represented as strings in
+returned series, so analysts should check values before performing downstream
+numeric aggregation.

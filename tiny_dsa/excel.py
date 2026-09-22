@@ -87,6 +87,16 @@ def _criteria_compare(op: str, left: T, right: T) -> bool:
         return left <= right
     return False
 
+def _enum_contains(value: object, allowed: object) -> bool:
+    """Return whether `value` is an enum member without bool/int confusion.
+
+    `1 in {True, False}` is true in Python because `bool` subclasses `int`.
+    Membership requires the same runtime type as the declared member.
+    """
+    if not isinstance(allowed, (set, frozenset, list, tuple)):
+        return False
+    return any((type(value) is type(item) and value == item for item in allowed))
+
 def _escape_sheet_for_formula(sheet: str) -> str:
     """Escape apostrophes for use inside quoted sheet names."""
     return sheet.replace("'", "''")
@@ -189,7 +199,7 @@ def _try_import_numpy() -> ModuleType | None:
 def _value_in_measure_domain(value: object, domain: Mapping[str, Any]) -> bool:
     """Return whether `value` is inside a measure domain declaration."""
     if 'enum' in domain:
-        return value in domain['enum']
+        return _enum_contains(value, domain['enum'])
     if 'between' in domain:
         if not _is_between_int(value):
             return False

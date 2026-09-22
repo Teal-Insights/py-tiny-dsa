@@ -39,3 +39,11 @@ policy decisions without a substantially richer model and independent review.
 - [Use the API in an analysis workflow](04-workflow.qmd)
 - [Understand the equation and its limitations](05-methodology.qmd)
 - [Validate results against Excel](user-guide/excel-parity-validation.qmd)
+
+The public calculation surface is in `tiny_dsa.api`. The three functions
+return labelled five-year series:
+
+- `compute_output_baseline` calculates the baseline path.
+- `compute_output_shocked` calculates the path after the selected shock.
+- `compute_output_delta` returns shocked minus baseline, in percentage points
+  of GDP.

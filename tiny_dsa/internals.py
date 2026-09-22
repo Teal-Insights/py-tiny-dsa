@@ -2,25 +2,25 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
+from typing import Annotated, Literal, cast
 from . import data
 from .tensor import Domain, Series
 from .excel import XlError, as_measure, xl_add, xl_bool, xl_choose_lazy, xl_div, xl_ge, xl_index, xl_match, xl_mul, xl_sub
-from .runtime import CoordinateReader, axis_step, evaluate, publish, view
+from .runtime import Between, CoordinateReader, axis_step, evaluate, publish, view
 
 @publish(key=(), domain=None, cells=data.INITIAL_DEBT_RESOLVED_CELLS)
-def initial_debt_resolved(*, country_profile_names: data.Series[str | None], country_name: str, country_initial_debt: data.CountryInitialDebt) -> float | str:
-    """Resolve the initial debt-to-GDP ratio for a selected country.
+def initial_debt_resolved(*, country_profile_names: data.Series[str | None], country_name: Literal["Aurelium", "Borvelia", "Litellia"], country_initial_debt: data.CountryInitialDebt) -> float | str:
+    """Resolve the initial debt-to-GDP ratio for the selected country from the country profile table.
 
-    Look up the initial debt-to-GDP ratio from the country profile table by matching the selected country name.
+    Reproduce the Inputs!B6 INDEX/MATCH lookup that loads a country's initial debt-to-GDP ratio from the preloaded three-row profile table.
 
     Args:
-        country_profile_names: Country name column of the country profile table, used as the lookup range for the match.
-        country_name: User-selected country name to match against the profile table; drawn from the profile table's allowed values.
-        country_initial_debt: Initial debt-to-GDP ratio column of the country profile table, in percent of GDP, returned for the matched row.
+        country_profile_names: Country names from the first column of the country profile table, aligned to the country axis; the lookup column matched against the selected country.
+        country_name: User-selected country drawn from the profile table (Aurelium, Borvelia, or Litellia); an exact match on this name selects the profile row.
+        country_initial_debt: Initial debt-to-GDP ratios (percent of GDP) from the second column of the profile table, aligned to the country axis; the value returned for the matched row.
 
     Returns:
-        The initial debt-to-GDP ratio in percent of GDP for the matched country, or the Excel error code if the country name is not found.
+        The initial debt-to-GDP ratio, in percent of GDP, from the profile row whose country name matches the selection; the corresponding Excel error code as a string if the lookup fails.
     """
     data.COUNTRY_PROFILE_NAMES.schema.validate(country_profile_names)
     data.COUNTRY_INITIAL_DEBT.schema.validate(country_initial_debt)
@@ -66,17 +66,17 @@ def engine_initial_debt_shocked(*, initial_debt_resolved: float | str) -> float 
         return error.code
 
 @publish(key=(), domain=None, cells=data.SHOCK_MAGNITUDE_RESOLVED_CELLS)
-def shock_magnitude_resolved(*, shock_type: int | str, shock_magnitudes: data.ShockMagnitudes) -> float | str:
+def shock_magnitude_resolved(*, shock_type: Literal[1, 2, 3], shock_magnitudes: data.ShockMagnitudes) -> float | str:
     """Resolve the shock magnitude for the selected shock type.
 
-    Selects the single shock magnitude that applies to the active run by indexing the shock table at the position implied by `shock_type`, mirroring the OFFSET lookup on the Engine sheet.
+    Selects the applicable shock magnitude from the shock table by offsetting from the shock table anchor to the column matching the chosen shock type, so that only the magnitude associated with the active shock is applied.
 
     Args:
-        shock_type: The parameter affected by the shock: 1 for real GDP growth, 2 for the real interest rate, or 3 for the primary balance. Also accepts the equivalent shock-type label; values are compared on a one-based offset into the shock table.
-        shock_magnitudes: The shock table holding one magnitude per shock type, ordered as growth, interest rate, and primary balance, in percentage points (defaults -2.0, +2.0, and -1.0). Only the entry matching `shock_type` is applied; the remaining entries are ignored.
+        shock_type: Shock type code (1 for real GDP growth, 2 for the real interest rate, 3 for the primary balance) identifying which parameter the shock affects.
+        shock_magnitudes: Shock magnitudes, one per shock type in shock-type order, expressed in percentage points; values not matching the selected shock type are ignored.
 
     Returns:
-        The shock magnitude, in percentage points, associated with `shock_type`. If the lookup fails, the corresponding Excel error code is returned as a string instead.
+        The shock magnitude, in percentage points, associated with the selected shock type; if the underlying lookup fails, the Excel error code is returned instead.
     """
     data.SHOCK_MAGNITUDES.schema.validate(shock_magnitudes)
     try:
@@ -85,17 +85,17 @@ def shock_magnitude_resolved(*, shock_type: int | str, shock_magnitudes: data.Sh
         return error.code
 
 @publish(data.SHOCK_ACTIVE.schema, cells=data.SHOCK_ACTIVE.cells)
-def shock_active(*, engine_year_labels: data.Series[int | str | None], shock_year: int | str) -> data.Series[int | str | None]:
-    """Build the shock-activation flag series over the projection horizon.
+def shock_active(*, engine_year_labels: data.Series[int | str | None], shock_year: Annotated[int, Between(1, 5)]) -> data.Series[int | str | None]:
+    """Return the shock-activation flag for each projection year.
 
-    Marks each projection year as shocked (1) or not (0) according to whether the year is at or beyond the configured shock year.
+    Marks which horizon years fall inside the shock period, so the shocked parameter rows apply the shock from the shock year through the end of the five-year horizon.
 
     Args:
-        engine_year_labels: Engine-sheet year labels for the five projection years, used to index each period of the recursion and to compare against the shock year.
-        shock_year: First year in which the shock takes effect; the shock applies from this year through the end of the horizon.
+        engine_year_labels: Year labels for the five-year projection horizon on the Engine sheet, one per column, tested period by period against the shock year.
+        shock_year: First year in which the shock takes effect, an integer between 1 and 5; the shock persists from this year through the end of the horizon.
 
     Returns:
-        Series of integer activation flags, one per projection year, equal to 1 when the year is greater than or equal to `shock_year` and 0 otherwise, aligned to `engine_year_labels`.
+        Series of integer flags aligned to the engine year labels, holding 1 for every year at or after the shock year and 0 for every earlier year.
     """
     data.ENGINE_YEAR_LABELS.schema.validate(engine_year_labels)
     def formula(time_period: int) -> int | str | None:
@@ -104,19 +104,19 @@ def shock_active(*, engine_year_labels: data.Series[int | str | None], shock_yea
     return data.SHOCK_ACTIVE.collect(evaluate(formula, data.SHOCK_ACTIVE.required))
 
 @publish(data.SHOCKED_GROWTH.schema, cells=data.SHOCKED_GROWTH.cells)
-def shocked_growth(*, growth_baseline: data.GrowthBaseline, shock_type: int | str, shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
-    """Compute the shocked real GDP growth path.
+def shocked_growth(*, growth_baseline: data.GrowthBaseline, shock_type: Literal[1, 2, 3], shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
+    """Build the shocked real GDP growth path by applying the resolved shock magnitude to the baseline growth series from the shock year onwards.
 
-    Applies the selected shock magnitude to the baseline real GDP growth trajectory from the shock year onwards when the growth shock is active.
+    Produce the year-by-year real GDP growth rates used by the shocked debt recursion.
 
     Args:
-        growth_baseline: Baseline real GDP growth rates in percent per annum for years 1 through 5, before any shock is applied.
-        shock_type: Integer 1, 2, or 3 selecting the shocked parameter (growth, real interest rate, or primary balance); the resolved magnitude is added to growth only when this equals 1.
-        shock_magnitude_resolved: Shock magnitude in percentage points, resolved from the shock table for the selected shock type; ignored unless the growth shock is selected.
-        shock_active: Year-by-year indicator that takes the value 1 in each year at or after the shock year and 0 in earlier years.
+        growth_baseline: Baseline real GDP growth rates for years 1 through 5, in percent per annum.
+        shock_type: Integer code identifying the parameter the shock affects (1 for real GDP growth, 2 for the real interest rate, 3 for the primary balance); the growth shock is applied only when this equals 1.
+        shock_magnitude_resolved: Shock magnitude in percentage points for the selected shock type, resolved from the shock table; added to the baseline growth rate in each active year.
+        shock_active: Per-year indicator series that is 1 in years at or after the shock year and 0 otherwise, so the shock persists symmetrically through the remainder of the horizon.
 
     Returns:
-        The shocked real GDP growth path in percent per annum, equal to the baseline growth rate plus the shock magnitude in active years when the growth shock is selected, and equal to the baseline growth rate otherwise.
+        A series of shocked real GDP growth rates for years 1 through 5, equal to the baseline growth path where the shock is inactive and to the baseline plus the resolved growth-shock magnitude where it is active.
     """
     data.GROWTH_BASELINE.schema.validate(growth_baseline)
     def formula(time_period: int) -> float | str | None:
@@ -125,19 +125,19 @@ def shocked_growth(*, growth_baseline: data.GrowthBaseline, shock_type: int | st
     return data.SHOCKED_GROWTH.collect(evaluate(formula, data.SHOCKED_GROWTH.required))
 
 @publish(data.SHOCKED_INTEREST.schema, cells=data.SHOCKED_INTEREST.cells)
-def shocked_interest(*, interest_baseline: data.InterestBaseline, shock_type: int | str, shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
-    """Compute the shocked real interest rate path by layering the selected shock magnitude on the baseline interest rates.
+def shocked_interest(*, interest_baseline: data.InterestBaseline, shock_type: Literal[1, 2, 3], shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
+    """Apply the selected shock magnitude to the baseline real interest rate path when the shock type is the real interest rate.
 
-    Produce the year-by-year real interest rate series used by the shocked debt recursion once the configured shock has been applied.
+    Produce the year-by-year shocked real interest rate series used by the shocked debt-dynamics recursion.
 
     Args:
-        interest_baseline: Baseline real interest rate path for years 1 through 5, in percent per annum, representing the effective real rate paid on outstanding general-government debt.
-        shock_type: Integer code (1 for real GDP growth, 2 for the real interest rate, 3 for the primary balance) identifying which parameter the shock affects; the magnitude enters this series only when the real interest rate is selected.
-        shock_magnitude_resolved: Shock magnitude in percentage points, resolved from the shock table for the selected shock type; it is added to the baseline rate only when the interest-rate shock is active, and ignored otherwise.
-        shock_active: Per-year shock-activation indicator, equal to 1 from the shock year through year 5 and 0 beforehand, which gates the application of the shock magnitude in each period.
+        interest_baseline: Baseline real interest rates, in percent per annum, for years 1 through 5; the effective real rate paid on outstanding general-government debt before any shock is applied.
+        shock_type: Integer code identifying the parameter affected by the shock: 1 for real GDP growth, 2 for the real interest rate, and 3 for the primary balance. The magnitude is added only when this equals 2.
+        shock_magnitude_resolved: Shock magnitude, in percentage points, resolved from the shock table for the selected shock type; added to the baseline real interest rate in each active shock year.
+        shock_active: Per-year indicator returning 1 in each year from the shock year through the end of the horizon and 0 otherwise; gates where the resolved magnitude is applied.
 
     Returns:
-        The shocked real interest rate path over the five-year horizon, in percent per annum: equal to the baseline rate before the shock year, and equal to the baseline rate plus the resolved magnitude thereafter when the interest-rate shock is selected; otherwise identical to the baseline path.
+        The shocked real interest rate series, in percent per annum, for years 1 through 5, equal to the baseline path where the shock is inactive and to the baseline plus the resolved magnitude in active years when the shock type is the real interest rate.
     """
     data.INTEREST_BASELINE.schema.validate(interest_baseline)
     def formula(time_period: int) -> float | str | None:
@@ -146,19 +146,19 @@ def shocked_interest(*, interest_baseline: data.InterestBaseline, shock_type: in
     return data.SHOCKED_INTEREST.collect(evaluate(formula, data.SHOCKED_INTEREST.required))
 
 @publish(data.SHOCKED_PRIMARY_BALANCE.schema, cells=data.SHOCKED_PRIMARY_BALANCE.cells)
-def shocked_primary_balance(*, primary_balance_baseline: data.PrimaryBalanceBaseline, shock_type: int | str, shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
+def shocked_primary_balance(*, primary_balance_baseline: data.PrimaryBalanceBaseline, shock_type: Literal[1, 2, 3], shock_magnitude_resolved: float | str, shock_active: data.Series[int | str | None]) -> data.Series[float | str | None]:
     """Shocked primary balance path after applying the selected shock magnitude.
 
-    Builds the year-by-year primary balance path that results from overlaying the selected shock magnitude, weighted by the shock-activation indicator, on the baseline primary balance.
+    Builds the year-by-year primary balance series as a percent of GDP under the configured shock, leaving the baseline path unchanged in years where the shock is inactive.
 
     Args:
-        primary_balance_baseline: Baseline primary balance path for years 1 through 5, in percent of GDP, with positive values denoting a surplus.
-        shock_type: Shock type code (1 for real GDP growth, 2 for the real interest rate, 3 for the primary balance); the primary balance is perturbed only when this resolves to 3, and the term is otherwise zero.
-        shock_magnitude_resolved: Shock magnitude in percentage points, resolved from the shock table for the selected shock type; it is added to the baseline primary balance only when the shock targets the primary balance.
-        shock_active: Year-by-year shock activation indicator, equal to 1 in years at or after the shock year and 0 otherwise, which gates the applied shock magnitude in each period.
+        primary_balance_baseline: Baseline primary balance path for years 1 through 5, expressed as a percent of GDP with positive values denoting a surplus.
+        shock_type: Integer between 1 and 3 selecting the parameter affected by the shock: 1 for real GDP growth, 2 for the real interest rate, and 3 for the primary balance. Only type 3 applies a magnitude to this series.
+        shock_magnitude_resolved: Shock magnitude for the selected shock type, in percentage points, resolved from the shock table. It is a reduction of the primary balance when the shock type is 3 and is inert otherwise.
+        shock_active: Indicator series over years 1 through 5 that is 1 in each year from the shock year onwards and 0 before it, determining where the shock applies.
 
     Returns:
-        The shocked primary balance for each year, in percent of GDP, equal to the baseline primary balance plus the shock magnitude in years where the shock is active and targets the primary balance, and the unmodified baseline value elsewhere.
+        The shocked primary balance path as a percent of GDP for years 1 through 5, equal to the baseline path before the shock year and to the baseline path adjusted by the resolved magnitude from the shock year onwards.
     """
     data.PRIMARY_BALANCE_BASELINE.schema.validate(primary_balance_baseline)
     def formula(time_period: int) -> float | str | None:

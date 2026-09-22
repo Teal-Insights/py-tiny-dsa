@@ -5,9 +5,10 @@ from __future__ import annotations
 from dataclasses import Field, dataclass, fields
 from functools import cached_property
 from pathlib import Path
-from typing import Any, ClassVar, Self
+from typing import Annotated, Any, ClassVar, Literal, Self
 
 from . import data, internals, validation
+from .runtime import Between
 from .workbook import read_bound_inputs
 
 
@@ -81,13 +82,13 @@ class Model(_BoundInputs):
     populated workbook of this vintage.
     """
 
-    country_name: str
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
     country_initial_debt: data.CountryInitialDebt
     growth_baseline: data.GrowthBaseline
     interest_baseline: data.InterestBaseline
     primary_balance_baseline: data.PrimaryBalanceBaseline
-    shock_year: int | str
-    shock_type: int | str
+    shock_year: Annotated[int, Between(1, 5)]
+    shock_type: Literal[1, 2, 3]
     shock_magnitudes: data.ShockMagnitudes
     _INPUT_IDS: tuple[str, ...] = ("country_name", "country_initial_debt", "growth_baseline", "interest_baseline", "primary_balance_baseline", "shock_year", "shock_type", "shock_magnitudes")
 
@@ -111,13 +112,13 @@ class Model(_BoundInputs):
     def from_defaults(
         cls,
         *,
-        country_name: str = data.COUNTRY_NAME_DEFAULT,
+        country_name: Literal["Aurelium", "Borvelia", "Litellia"] = data.COUNTRY_NAME_DEFAULT,
         country_initial_debt: data.CountryInitialDebt = data.COUNTRY_INITIAL_DEBT_DEFAULT,
         growth_baseline: data.GrowthBaseline = data.GROWTH_BASELINE_DEFAULT,
         interest_baseline: data.InterestBaseline = data.INTEREST_BASELINE_DEFAULT,
         primary_balance_baseline: data.PrimaryBalanceBaseline = data.PRIMARY_BALANCE_BASELINE_DEFAULT,
-        shock_year: int | str = data.SHOCK_YEAR_DEFAULT,
-        shock_type: int | str = data.SHOCK_TYPE_DEFAULT,
+        shock_year: Annotated[int, Between(1, 5)] = data.SHOCK_YEAR_DEFAULT,
+        shock_type: Literal[1, 2, 3] = data.SHOCK_TYPE_DEFAULT,
         shock_magnitudes: data.ShockMagnitudes = data.SHOCK_MAGNITUDES_DEFAULT,
     ) -> Model:
         """Bind every input from `data.*_DEFAULT`, then apply overrides."""
@@ -189,7 +190,7 @@ class Model(_BoundInputs):
 class OutputBaselineInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_baseline`."""
 
-    country_name: str
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
     country_initial_debt: data.CountryInitialDebt
     growth_baseline: data.GrowthBaseline
     interest_baseline: data.InterestBaseline
@@ -200,13 +201,13 @@ class OutputBaselineInputs(_SnapshotInputs):
 class OutputShockedInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_shocked`."""
 
-    country_name: str
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
     country_initial_debt: data.CountryInitialDebt
     growth_baseline: data.GrowthBaseline
     interest_baseline: data.InterestBaseline
     primary_balance_baseline: data.PrimaryBalanceBaseline
-    shock_year: int | str
-    shock_type: int | str
+    shock_year: Annotated[int, Between(1, 5)]
+    shock_type: Literal[1, 2, 3]
     shock_magnitudes: data.ShockMagnitudes
 
 
@@ -214,13 +215,13 @@ class OutputShockedInputs(_SnapshotInputs):
 class OutputDeltaInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_delta`."""
 
-    country_name: str
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
     country_initial_debt: data.CountryInitialDebt
     growth_baseline: data.GrowthBaseline
     interest_baseline: data.InterestBaseline
     primary_balance_baseline: data.PrimaryBalanceBaseline
-    shock_year: int | str
-    shock_type: int | str
+    shock_year: Annotated[int, Between(1, 5)]
+    shock_type: Literal[1, 2, 3]
     shock_magnitudes: data.ShockMagnitudes
 
 

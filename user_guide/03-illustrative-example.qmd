@@ -52,17 +52,19 @@ primary_balance_shock = compute_output_shocked(
 )
 ```
 
-Combine the baseline and shocked paths into a single Polars table, prepending the year-0 initial debt of 60.0.
+Combine the baseline and shocked paths into a plain list of records. The
+year-0 initial debt is not returned by the API, so prepend it yourself when a
+chart or table needs the starting observation.
 
 ```{python}
 [
-    {
-        "Year": year,
-        "Baseline": round(baseline_value, 2),
-        "Growth shock": round(growth_value, 2),
-        "Interest shock": round(interest_value, 2),
-        "Primary balance shock": round(primary_value, 2),
-    }
+        {
+            "Year": year,
+            "Baseline": round(baseline_value, 2),
+            "Growth shock": round(growth_value, 2),
+            "Interest shock": round(interest_value, 2),
+            "Primary balance shock": round(primary_value, 2),
+        }
     for year, baseline_value, growth_value, interest_value, primary_value in zip(
         range(1, 6), values(baseline), values(growth_shock),
         values(interest_shock), values(primary_balance_shock), strict=True

@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
+from typing import Annotated
 from .provenance import block_cells, column_cells, grid_cells, row_cells
+from .runtime import RealBetween
 from .tensor import Axis, Domain, Series, SeriesSpec, coordinate_runs, define_series
 CODEGEN_SCHEMA_VERSION = 'named-axis-v1'
 CODEGEN_FINGERPRINT = '623f46e74dbf6fd40f2d38a8f7eab8bbdd74801a163c58317aa2c92451aadd21'
@@ -31,54 +33,54 @@ ENGINE_YEAR_LABELS: Series[int | str | None] = define_series(
 )
 COUNTRY_NAME_CELLS = {(): 'Inputs!B5'}
 COUNTRY_NAME_DEFAULT = 'Borvelia'
-COUNTRY_INITIAL_DEBT: Series[float | str | None] = define_series(
+COUNTRY_INITIAL_DEBT: Series[Annotated[float, RealBetween(0.0, 200.0)] | None] = define_series(
     'country_initial_debt',
     COUNTRY_PROFILE_NAMES.domain,
     (60.0, 80.0, 40.0),
     cells=column_cells('Inputs', 'B', 10, COUNTRY_AXIS),
     value_types=FLOAT_VALUES,
 )
-CountryInitialDebt = Series[float | str | None]
+CountryInitialDebt = Series[Annotated[float, RealBetween(0.0, 200.0)] | None]
 COUNTRY_INITIAL_DEBT_DEFAULT = COUNTRY_INITIAL_DEBT
-GROWTH_BASELINE: Series[float | str | None] = define_series(
+GROWTH_BASELINE: Series[Annotated[float, RealBetween(-10.0, 15.0)] | None] = define_series(
     'growth_baseline',
     ENGINE_YEAR_LABELS.domain,
     (3.5, 3.5, 3.5, 3.5, 3.5),
     cells=row_cells('Inputs', 16, 'C', TIME_PERIOD_AXIS),
     value_types=FLOAT_VALUES,
 )
-GrowthBaseline = Series[float | str | None]
+GrowthBaseline = Series[Annotated[float, RealBetween(-10.0, 15.0)] | None]
 GROWTH_BASELINE_DEFAULT = GROWTH_BASELINE
-INTEREST_BASELINE: Series[float | str | None] = define_series(
+INTEREST_BASELINE: Series[Annotated[float, RealBetween(0.0, 20.0)] | None] = define_series(
     'interest_baseline',
     ENGINE_YEAR_LABELS.domain,
     (4.0, 4.0, 4.0, 4.0, 4.0),
     cells=row_cells('Inputs', 17, 'C', TIME_PERIOD_AXIS),
     value_types=FLOAT_VALUES,
 )
-InterestBaseline = Series[float | str | None]
+InterestBaseline = Series[Annotated[float, RealBetween(0.0, 20.0)] | None]
 INTEREST_BASELINE_DEFAULT = INTEREST_BASELINE
-PRIMARY_BALANCE_BASELINE: Series[float | str | None] = define_series(
+PRIMARY_BALANCE_BASELINE: Series[Annotated[float, RealBetween(-15.0, 15.0)] | None] = define_series(
     'primary_balance_baseline',
     ENGINE_YEAR_LABELS.domain,
     (-1.0, -0.5, 0.0, 0.5, 1.0),
     cells=row_cells('Inputs', 18, 'C', TIME_PERIOD_AXIS),
     value_types=FLOAT_VALUES,
 )
-PrimaryBalanceBaseline = Series[float | str | None]
+PrimaryBalanceBaseline = Series[Annotated[float, RealBetween(-15.0, 15.0)] | None]
 PRIMARY_BALANCE_BASELINE_DEFAULT = PRIMARY_BALANCE_BASELINE
 SHOCK_YEAR_CELLS = {(): 'Inputs!B21'}
 SHOCK_YEAR_DEFAULT = 2
 SHOCK_TYPE_CELLS = {(): 'Inputs!B22'}
 SHOCK_TYPE_DEFAULT = 1
-SHOCK_MAGNITUDES: Series[float | str | None] = define_series(
+SHOCK_MAGNITUDES: Series[Annotated[float, RealBetween(-30.0, 30.0)] | None] = define_series(
     'shock_magnitudes',
     Domain.product(SHOCK_PARAMETER_AXIS),
     (-2.0, 2.0, -1.0),
     cells=row_cells('Inputs', 26, 'B', SHOCK_PARAMETER_AXIS),
     value_types=FLOAT_VALUES,
 )
-ShockMagnitudes = Series[float | str | None]
+ShockMagnitudes = Series[Annotated[float, RealBetween(-30.0, 30.0)] | None]
 SHOCK_MAGNITUDES_DEFAULT = SHOCK_MAGNITUDES
 INITIAL_DEBT_RESOLVED_CELLS = {(): 'Inputs!B6'}
 ENGINE_INITIAL_DEBT_BASELINE_CELLS = {(): 'Engine!B6'}
