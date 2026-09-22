@@ -1,6 +1,8 @@
 ---
 title: "Tiny DSA"
 subtitle: "A practical guide for economists"
+resources:
+  - ../assets/graph/**
 ---
 
 Tiny DSA is a Python reimplementation of the small Excel workbook described in
@@ -31,6 +33,58 @@ IMF, the World Bank, or any other institution. Do not use its results for
 policy decisions without a substantially richer model and independent review.
 :::
 
+## Interactive dependency graph
+
+Each node is one bound series. Columns are **topological layers** (longest
+path in the dependency DAG), so edges only run forward between columns — not
+within a layer. Node colors still mark input / internal / output. Values appear
+as a comma-separated list. Amber nodes are editable; drag to rearrange and use
+Ctrl+Z to undo a move. Edits recompute like `tiny_dsa.model.Model`.
+
+::: {.column-page-inset-right}
+```{=html}
+<iframe
+  id="tiny-dsa-graph-frame"
+  title="Tiny DSA interactive dependency graph"
+  style="width:100%;height:min(80vh,720px);border:1px solid #e7e5e4;border-radius:8px;background:#f7f5f1;"
+  loading="lazy"
+></iframe>
+<script>
+(function () {
+  var frame = document.getElementById("tiny-dsa-graph-frame");
+  if (!frame) return;
+  // Great Docs publishes the app at site-root assets/graph/.
+  // Prefer ../assets when this page lives under /user-guide/, else ./assets.
+  var underGuide = /\/user-guide\//.test(location.pathname);
+  var candidates = underGuide
+    ? ["../assets/graph/index.html", "assets/graph/index.html"]
+    : ["assets/graph/index.html", "../assets/graph/index.html"];
+  function tryNext(i) {
+    if (i >= candidates.length) {
+      frame.src = new URL(candidates[0], document.baseURI).href;
+      return;
+    }
+    var url = new URL(candidates[i], document.baseURI).href;
+    fetch(url, { method: "GET", cache: "no-store" })
+      .then(function (res) {
+        if (res.ok) frame.src = url;
+        else tryNext(i + 1);
+      })
+      .catch(function () { tryNext(i + 1); });
+  }
+  tryNext(0);
+})();
+</script>
+```
+:::
+
+::: {.callout-note}
+Drag to pan, scroll to zoom, click a series for details, and double-click an
+amber input to edit comma-separated values. Ctrl+Z undoes node moves. Use
+**Reset defaults** inside the frame to restore the workbook snapshot.
+[Open the graph full page](assets/graph/index.html).
+:::
+
 ## Start here
 
 - [Install and run a first projection](01-getting-started.qmd)
@@ -38,7 +92,7 @@ policy decisions without a substantially richer model and independent review.
 - [Work through a scenario](03-illustrative-example.qmd)
 - [Use the API in an analysis workflow](04-workflow.qmd)
 - [Understand the equation and its limitations](05-methodology.qmd)
-- [Validate results against Excel](user-guide/excel-parity-validation.qmd)
+- [Validate results against Excel](99-excel-parity-validation.qmd)
 
 The public calculation surface is in `tiny_dsa.api`. The three functions
 return labelled five-year series:

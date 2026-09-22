@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny DSA · interactive dependency graph</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.js"></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div>
+          <h1>Tiny DSA dependency graph</h1>
+          <p>
+            One node per series. Columns are topological layers (longest path),
+            so edges only run forward — never within a column. Amber nodes are
+            editable; drag to rearrange; Ctrl+Z undoes a move. Recomputes like
+            <code>tiny_dsa.model.Model</code>.
+          </p>
+        </div>
+        <div class="legend">
+          <span class="chip"><span class="swatch input"></span> input</span>
+          <span class="chip"><span class="swatch internal"></span> internal</span>
+          <span class="chip"><span class="swatch output"></span> output</span>
+          <div class="actions">
+            <button type="button" id="btn-fit">Fit</button>
+            <button type="button" id="btn-reset" class="primary">Reset defaults</button>
+          </div>
+        </div>
+      </header>
+      <div class="main">
+        <div id="cy" role="img" aria-label="Tiny DSA series dependency graph"></div>
+        <aside class="side" id="side"></aside>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
