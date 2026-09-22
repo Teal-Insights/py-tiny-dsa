@@ -1,0 +1,695 @@
+{
+  "axes": {
+    "years": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "countries": [
+      "Borvelia",
+      "Litellia",
+      "Aurelium"
+    ],
+    "shock_params": [
+      "Growth",
+      "Interest",
+      "Primary balance"
+    ]
+  },
+  "defaults": {
+    "country_name": "Borvelia",
+    "country_initial_debt": {
+      "Borvelia": 60.0,
+      "Litellia": 80.0,
+      "Aurelium": 40.0
+    },
+    "growth_baseline": {
+      "1": 3.5,
+      "2": 3.5,
+      "3": 3.5,
+      "4": 3.5,
+      "5": 3.5
+    },
+    "interest_baseline": {
+      "1": 4.0,
+      "2": 4.0,
+      "3": 4.0,
+      "4": 4.0,
+      "5": 4.0
+    },
+    "primary_balance_baseline": {
+      "1": -1.0,
+      "2": -0.5,
+      "3": 0.0,
+      "4": 0.5,
+      "5": 1.0
+    },
+    "shock_year": 2,
+    "shock_type": 1,
+    "shock_magnitudes": {
+      "Growth": -2.0,
+      "Interest": 2.0,
+      "Primary balance": -1.0
+    }
+  },
+  "nodes": [
+    {
+      "id": "country_name",
+      "role": "input",
+      "label": "country_name",
+      "sheet": "Inputs",
+      "kind": "enum",
+      "keys": [
+        null
+      ],
+      "address": "Inputs!B5",
+      "options": [
+        "Borvelia",
+        "Litellia",
+        "Aurelium"
+      ]
+    },
+    {
+      "id": "country_initial_debt",
+      "role": "input",
+      "label": "country_initial_debt",
+      "sheet": "Inputs",
+      "kind": "country_map",
+      "keys": [
+        "Borvelia",
+        "Litellia",
+        "Aurelium"
+      ],
+      "addresses": {
+        "Borvelia": "Inputs!B10",
+        "Litellia": "Inputs!B11",
+        "Aurelium": "Inputs!B12"
+      },
+      "domain": {
+        "min": 0.0,
+        "max": 200.0
+      }
+    },
+    {
+      "id": "growth_baseline",
+      "role": "input",
+      "label": "growth_baseline",
+      "sheet": "Inputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Inputs!C16",
+        "2": "Inputs!D16",
+        "3": "Inputs!E16",
+        "4": "Inputs!F16",
+        "5": "Inputs!G16"
+      },
+      "domain": {
+        "min": -10.0,
+        "max": 15.0
+      }
+    },
+    {
+      "id": "interest_baseline",
+      "role": "input",
+      "label": "interest_baseline",
+      "sheet": "Inputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Inputs!C17",
+        "2": "Inputs!D17",
+        "3": "Inputs!E17",
+        "4": "Inputs!F17",
+        "5": "Inputs!G17"
+      },
+      "domain": {
+        "min": 0.0,
+        "max": 20.0
+      }
+    },
+    {
+      "id": "primary_balance_baseline",
+      "role": "input",
+      "label": "primary_balance_baseline",
+      "sheet": "Inputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Inputs!C18",
+        "2": "Inputs!D18",
+        "3": "Inputs!E18",
+        "4": "Inputs!F18",
+        "5": "Inputs!G18"
+      },
+      "domain": {
+        "min": -15.0,
+        "max": 15.0
+      }
+    },
+    {
+      "id": "shock_year",
+      "role": "input",
+      "label": "shock_year",
+      "sheet": "Inputs",
+      "kind": "int",
+      "keys": [
+        null
+      ],
+      "address": "Inputs!B21",
+      "domain": {
+        "min": 1.0,
+        "max": 5.0
+      }
+    },
+    {
+      "id": "shock_type",
+      "role": "input",
+      "label": "shock_type",
+      "sheet": "Inputs",
+      "kind": "enum_int",
+      "keys": [
+        null
+      ],
+      "address": "Inputs!B22",
+      "options": [
+        1,
+        2,
+        3
+      ],
+      "optionLabels": {
+        "1": "1 \u00b7 growth",
+        "2": "2 \u00b7 interest",
+        "3": "3 \u00b7 primary balance"
+      }
+    },
+    {
+      "id": "shock_magnitudes",
+      "role": "input",
+      "label": "shock_magnitudes",
+      "sheet": "Inputs",
+      "kind": "shock_map",
+      "keys": [
+        "Growth",
+        "Interest",
+        "Primary balance"
+      ],
+      "addresses": {
+        "Growth": "Inputs!B26",
+        "Interest": "Inputs!C26",
+        "Primary balance": "Inputs!D26"
+      },
+      "domain": {
+        "min": -30.0,
+        "max": 30.0
+      }
+    },
+    {
+      "id": "initial_debt_resolved",
+      "role": "internal",
+      "label": "initial_debt_resolved",
+      "sheet": "Inputs",
+      "kind": "scalar",
+      "keys": [
+        null
+      ],
+      "address": "Inputs!B6"
+    },
+    {
+      "id": "engine_initial_debt_baseline",
+      "role": "internal",
+      "label": "engine_initial_debt_baseline",
+      "sheet": "Engine",
+      "kind": "scalar",
+      "keys": [
+        null
+      ],
+      "address": "Engine!B6"
+    },
+    {
+      "id": "engine_initial_debt_shocked",
+      "role": "internal",
+      "label": "engine_initial_debt_shocked",
+      "sheet": "Engine",
+      "kind": "scalar",
+      "keys": [
+        null
+      ],
+      "address": "Engine!B20"
+    },
+    {
+      "id": "shock_magnitude_resolved",
+      "role": "internal",
+      "label": "shock_magnitude_resolved",
+      "sheet": "Engine",
+      "kind": "scalar",
+      "keys": [
+        null
+      ],
+      "address": "Engine!B9"
+    },
+    {
+      "id": "shock_active",
+      "role": "internal",
+      "label": "shock_active",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C10",
+        "2": "Engine!D10",
+        "3": "Engine!E10",
+        "4": "Engine!F10",
+        "5": "Engine!G10"
+      }
+    },
+    {
+      "id": "shocked_growth",
+      "role": "internal",
+      "label": "shocked_growth",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C14",
+        "2": "Engine!D14",
+        "3": "Engine!E14",
+        "4": "Engine!F14",
+        "5": "Engine!G14"
+      }
+    },
+    {
+      "id": "shocked_interest",
+      "role": "internal",
+      "label": "shocked_interest",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C15",
+        "2": "Engine!D15",
+        "3": "Engine!E15",
+        "4": "Engine!F15",
+        "5": "Engine!G15"
+      }
+    },
+    {
+      "id": "shocked_primary_balance",
+      "role": "internal",
+      "label": "shocked_primary_balance",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C16",
+        "2": "Engine!D16",
+        "3": "Engine!E16",
+        "4": "Engine!F16",
+        "5": "Engine!G16"
+      }
+    },
+    {
+      "id": "baseline_path_internal",
+      "role": "internal",
+      "label": "baseline_path_internal",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C6",
+        "2": "Engine!D6",
+        "3": "Engine!E6",
+        "4": "Engine!F6",
+        "5": "Engine!G6"
+      }
+    },
+    {
+      "id": "shocked_path_internal",
+      "role": "internal",
+      "label": "shocked_path_internal",
+      "sheet": "Engine",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Engine!C20",
+        "2": "Engine!D20",
+        "3": "Engine!E20",
+        "4": "Engine!F20",
+        "5": "Engine!G20"
+      }
+    },
+    {
+      "id": "output_baseline",
+      "role": "output",
+      "label": "output_baseline",
+      "sheet": "Outputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Outputs!B12",
+        "2": "Outputs!C12",
+        "3": "Outputs!D12",
+        "4": "Outputs!E12",
+        "5": "Outputs!F12"
+      }
+    },
+    {
+      "id": "output_shocked",
+      "role": "output",
+      "label": "output_shocked",
+      "sheet": "Outputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Outputs!B13",
+        "2": "Outputs!C13",
+        "3": "Outputs!D13",
+        "4": "Outputs!E13",
+        "5": "Outputs!F13"
+      }
+    },
+    {
+      "id": "output_delta",
+      "role": "output",
+      "label": "output_delta",
+      "sheet": "Outputs",
+      "kind": "year_map",
+      "keys": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "addresses": {
+        "1": "Outputs!B14",
+        "2": "Outputs!C14",
+        "3": "Outputs!D14",
+        "4": "Outputs!E14",
+        "5": "Outputs!F14"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "country_name",
+      "initial_debt_resolved"
+    ],
+    [
+      "country_initial_debt",
+      "initial_debt_resolved"
+    ],
+    [
+      "initial_debt_resolved",
+      "engine_initial_debt_baseline"
+    ],
+    [
+      "initial_debt_resolved",
+      "engine_initial_debt_shocked"
+    ],
+    [
+      "shock_type",
+      "shock_magnitude_resolved"
+    ],
+    [
+      "shock_magnitudes",
+      "shock_magnitude_resolved"
+    ],
+    [
+      "shock_year",
+      "shock_active"
+    ],
+    [
+      "growth_baseline",
+      "shocked_growth"
+    ],
+    [
+      "shock_type",
+      "shocked_growth"
+    ],
+    [
+      "shock_magnitude_resolved",
+      "shocked_growth"
+    ],
+    [
+      "shock_active",
+      "shocked_growth"
+    ],
+    [
+      "interest_baseline",
+      "shocked_interest"
+    ],
+    [
+      "shock_type",
+      "shocked_interest"
+    ],
+    [
+      "shock_magnitude_resolved",
+      "shocked_interest"
+    ],
+    [
+      "shock_active",
+      "shocked_interest"
+    ],
+    [
+      "primary_balance_baseline",
+      "shocked_primary_balance"
+    ],
+    [
+      "shock_type",
+      "shocked_primary_balance"
+    ],
+    [
+      "shock_magnitude_resolved",
+      "shocked_primary_balance"
+    ],
+    [
+      "shock_active",
+      "shocked_primary_balance"
+    ],
+    [
+      "engine_initial_debt_baseline",
+      "baseline_path_internal"
+    ],
+    [
+      "growth_baseline",
+      "baseline_path_internal"
+    ],
+    [
+      "interest_baseline",
+      "baseline_path_internal"
+    ],
+    [
+      "primary_balance_baseline",
+      "baseline_path_internal"
+    ],
+    [
+      "engine_initial_debt_shocked",
+      "shocked_path_internal"
+    ],
+    [
+      "shocked_growth",
+      "shocked_path_internal"
+    ],
+    [
+      "shocked_interest",
+      "shocked_path_internal"
+    ],
+    [
+      "shocked_primary_balance",
+      "shocked_path_internal"
+    ],
+    [
+      "baseline_path_internal",
+      "output_baseline"
+    ],
+    [
+      "shocked_path_internal",
+      "output_shocked"
+    ],
+    [
+      "output_baseline",
+      "output_delta"
+    ],
+    [
+      "output_shocked",
+      "output_delta"
+    ]
+  ],
+  "values": {
+    "country_name": "Borvelia",
+    "country_initial_debt": {
+      "Borvelia": 60.0,
+      "Litellia": 80.0,
+      "Aurelium": 40.0
+    },
+    "growth_baseline": {
+      "1": 3.5,
+      "2": 3.5,
+      "3": 3.5,
+      "4": 3.5,
+      "5": 3.5
+    },
+    "interest_baseline": {
+      "1": 4.0,
+      "2": 4.0,
+      "3": 4.0,
+      "4": 4.0,
+      "5": 4.0
+    },
+    "primary_balance_baseline": {
+      "1": -1.0,
+      "2": -0.5,
+      "3": 0.0,
+      "4": 0.5,
+      "5": 1.0
+    },
+    "shock_year": 2,
+    "shock_type": 1,
+    "shock_magnitudes": {
+      "Growth": -2.0,
+      "Interest": 2.0,
+      "Primary balance": -1.0
+    },
+    "initial_debt_resolved": 60.0,
+    "engine_initial_debt_baseline": 60.0,
+    "engine_initial_debt_shocked": 60.0,
+    "shock_magnitude_resolved": -2.0,
+    "shock_active": {
+      "1": 0.0,
+      "2": 1.0,
+      "3": 1.0,
+      "4": 1.0,
+      "5": 1.0
+    },
+    "shocked_growth": {
+      "1": 3.5,
+      "2": 1.5,
+      "3": 1.5,
+      "4": 1.5,
+      "5": 1.5
+    },
+    "shocked_interest": {
+      "1": 4.0,
+      "2": 4.0,
+      "3": 4.0,
+      "4": 4.0,
+      "5": 4.0
+    },
+    "shocked_primary_balance": {
+      "1": -1.0,
+      "2": -0.5,
+      "3": 0.0,
+      "4": 0.5,
+      "5": 1.0
+    },
+    "baseline_path_internal": {
+      "1": 61.28985507246378,
+      "2": 62.0859413288525,
+      "3": 62.38587341256677,
+      "4": 62.18725444354536,
+      "5": 61.487675962596306
+    },
+    "shocked_path_internal": {
+      "1": 61.28985507246378,
+      "2": 63.29945741415009,
+      "3": 64.85855735045921,
+      "4": 65.9560587630321,
+      "5": 66.58059223010186
+    },
+    "output_baseline": {
+      "1": 61.28985507246378,
+      "2": 62.0859413288525,
+      "3": 62.38587341256677,
+      "4": 62.18725444354536,
+      "5": 61.487675962596306
+    },
+    "output_shocked": {
+      "1": 61.28985507246378,
+      "2": 63.29945741415009,
+      "3": 64.85855735045921,
+      "4": 65.9560587630321,
+      "5": 66.58059223010186
+    },
+    "output_delta": {
+      "1": 0.0,
+      "2": 1.2135160852975915,
+      "3": 2.472683937892441,
+      "4": 3.7688043194867404,
+      "5": 5.092916267505551
+    }
+  },
+  "backend": "formula_evaluator",
+  "backends": [
+    "export",
+    "formula_evaluator"
+  ]
+}

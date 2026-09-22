@@ -36,6 +36,33 @@ body {
   min-height: 640px;
 }
 
+/* Docs homepage embed: diagram only, no chrome. */
+body.preview {
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body.preview .app {
+  grid-template-rows: 1fr;
+  min-height: 0;
+  height: 100%;
+}
+
+body.preview .toolbar,
+body.preview .side,
+body.preview .toast {
+  display: none !important;
+}
+
+body.preview .main {
+  grid-template-columns: 1fr;
+}
+
+body.preview #cy {
+  min-height: 0;
+  pointer-events: none;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

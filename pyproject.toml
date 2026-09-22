@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "A Python implementation of the Tiny-DSA Excel workbook, a stylized debt-sustainability tool for computing the debt-to-GDP ratio over a five-year horizon with one configurable shock."
 requires-python = ">=3.13"
 dependencies = [
-    "fastpyxl",
+    "fastpyxl>=1.1.0",
     "numpy",
 ]
 
@@ -22,6 +22,10 @@ dev = [
     "pandas",
     "polars",
     "matplotlib",
+]
+graph = [
+    "excel-grapher>=15.0.0",
+    "pytest>=8.0.0",
 ]
 validation = [
     "xlwings>=0.35.3",

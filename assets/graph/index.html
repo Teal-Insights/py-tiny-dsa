@@ -3,22 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Optional: remote FormulaEvaluator API (Railway). Overridden by config.js / ?api= -->
+    <meta name="tiny-dsa-graph-api" content="https://desirable-trust-production-0e2a.up.railway.app" />
     <title>Tiny DSA · interactive dependency graph</title>
     <link rel="stylesheet" href="style.css" />
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.js"></script>
+    <script src="config.js"></script>
   </head>
   <body>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get("preview") === "1" || params.get("preview") === "true") {
+          document.body.classList.add("preview");
+        }
+      })();
+    </script>
     <div class="app">
       <header class="toolbar">
         <div>
           <h1>Tiny DSA dependency graph</h1>
-          <p>
-            One node per series. Columns are topological layers (longest path),
-            so edges only run forward — never within a column. Amber nodes are
-            editable; drag to rearrange; Ctrl+Z undoes a move. Recomputes like
-            <code>tiny_dsa.model.Model</code>.
-          </p>
         </div>
         <div class="legend">
           <span class="chip"><span class="swatch input"></span> input</span>
