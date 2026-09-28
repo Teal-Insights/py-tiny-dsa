@@ -9,24 +9,17 @@ session. Pass the complete scenario to each calculation. This makes a run
 reproducible and makes it straightforward to compare several shocks.
 
 ```{python}
-from tiny_dsa import api, data
+from tiny_dsa import api
 from tiny_dsa.api import OutputBaselineInputs, OutputDeltaInputs, OutputShockedInputs
 
+fields = OutputShockedInputs.describe()
 common = dict(
     country_name="Litellia",
-    country_initial_debt=data.COUNTRY_INITIAL_DEBT_DEFAULT,
-    growth_baseline=data.GROWTH_BASELINE_DEFAULT.with_values((3.0, 3.2, 3.4, 3.5, 3.5)),
-    interest_baseline=data.INTEREST_BASELINE_DEFAULT.with_values((4.5, 4.5, 4.5, 4.5, 4.5)),
-    primary_balance_baseline=data.PRIMARY_BALANCE_BASELINE_DEFAULT,
-    shock_magnitudes=data.SHOCK_MAGNITUDES_DEFAULT,
+    growth_baseline=fields["growth_baseline"].default.with_values((3.0, 3.2, 3.4, 3.5, 3.5)),
+    interest_baseline=fields["interest_baseline"].default.with_values((4.5, 4.5, 4.5, 4.5, 4.5)),
 )
 
-baseline_common = {
-    key: value for key, value in common.items() if key != "shock_magnitudes"
-}
-baseline = api.compute_output_baseline(
-    OutputBaselineInputs.from_defaults(**baseline_common)
-)
+baseline = api.compute_output_baseline(OutputBaselineInputs.from_defaults(**common))
 scenario = common | {"shock_year": 2, "shock_type": 3}
 shocked = api.compute_output_shocked(OutputShockedInputs.from_defaults(**scenario))
 delta = api.compute_output_delta(OutputDeltaInputs.from_defaults(**scenario))
@@ -34,9 +27,11 @@ delta = api.compute_output_delta(OutputDeltaInputs.from_defaults(**scenario))
 baseline, shocked, delta
 ```
 
-The input series are keyed by semantic axes. `.with_values(...)` preserves the
-default axis and replaces its five observations, while `.sel(...)` can retrieve
-one named observation.
+Fields left out of `common` keep their workbook defaults. The input series are
+keyed by semantic axes. `describe()` reports each field's axes, keys, allowed
+values, and default; `.with_values(...)` preserves the default's axes and
+replaces its observations, while `.sel(...)` can retrieve one named
+observation.
 
 ## Compare all three shock types
 
@@ -82,8 +77,8 @@ example, cannot be published against the required five-year schema rather
 than silently padding the scenario.
 Likewise, `country_name`, `shock_year`, and `shock_type` are validated before
 calculation. An unknown country or an out-of-range shock setting raises
-`ValueError`; keep country names aligned with the profile names:
-`Borvelia`, `Litellia`, and `Aurelium`.
+`ValueError`. `describe()` lists the accepted choices and bounds for every
+field, so check it before building inputs programmatically.
 
 Some workbook-style calculation errors can still be represented as strings in
 returned series, so analysts should check values before performing downstream

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import Field, dataclass, fields
+from dataclasses import field as _field
 from functools import cached_property
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Literal, Self
 
 from . import data, internals, validation
-from .runtime import Between
+from .runtime import Between, InputField, describe_inputs
 from .workbook import read_bound_inputs
 
 
@@ -69,6 +70,11 @@ class _SnapshotInputs(_BoundInputs):
             for name in names
         }
         return cls(**values)
+
+    @classmethod
+    def describe(cls) -> dict[str, InputField]:
+        """Axes, keys, value annotation, default, and cells of each field."""
+        return describe_inputs(cls)
 
 
 class Model(_BoundInputs):
@@ -190,39 +196,81 @@ class Model(_BoundInputs):
 class OutputBaselineInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_baseline`."""
 
-    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
-    country_initial_debt: data.CountryInitialDebt
-    growth_baseline: data.GrowthBaseline
-    interest_baseline: data.InterestBaseline
-    primary_balance_baseline: data.PrimaryBalanceBaseline
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"] = _field(
+        metadata={"default": data.COUNTRY_NAME_DEFAULT, "cells": data.COUNTRY_NAME_CELLS},
+    )
+    country_initial_debt: data.CountryInitialDebt = _field(
+        metadata={"default": data.COUNTRY_INITIAL_DEBT_DEFAULT, "cells": data.COUNTRY_INITIAL_DEBT.cells},
+    )
+    growth_baseline: data.GrowthBaseline = _field(
+        metadata={"default": data.GROWTH_BASELINE_DEFAULT, "cells": data.GROWTH_BASELINE.cells},
+    )
+    interest_baseline: data.InterestBaseline = _field(
+        metadata={"default": data.INTEREST_BASELINE_DEFAULT, "cells": data.INTEREST_BASELINE.cells},
+    )
+    primary_balance_baseline: data.PrimaryBalanceBaseline = _field(
+        metadata={"default": data.PRIMARY_BALANCE_BASELINE_DEFAULT, "cells": data.PRIMARY_BALANCE_BASELINE.cells},
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
 class OutputShockedInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_shocked`."""
 
-    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
-    country_initial_debt: data.CountryInitialDebt
-    growth_baseline: data.GrowthBaseline
-    interest_baseline: data.InterestBaseline
-    primary_balance_baseline: data.PrimaryBalanceBaseline
-    shock_year: Annotated[int, Between(1, 5)]
-    shock_type: Literal[1, 2, 3]
-    shock_magnitudes: data.ShockMagnitudes
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"] = _field(
+        metadata={"default": data.COUNTRY_NAME_DEFAULT, "cells": data.COUNTRY_NAME_CELLS},
+    )
+    country_initial_debt: data.CountryInitialDebt = _field(
+        metadata={"default": data.COUNTRY_INITIAL_DEBT_DEFAULT, "cells": data.COUNTRY_INITIAL_DEBT.cells},
+    )
+    growth_baseline: data.GrowthBaseline = _field(
+        metadata={"default": data.GROWTH_BASELINE_DEFAULT, "cells": data.GROWTH_BASELINE.cells},
+    )
+    interest_baseline: data.InterestBaseline = _field(
+        metadata={"default": data.INTEREST_BASELINE_DEFAULT, "cells": data.INTEREST_BASELINE.cells},
+    )
+    primary_balance_baseline: data.PrimaryBalanceBaseline = _field(
+        metadata={"default": data.PRIMARY_BALANCE_BASELINE_DEFAULT, "cells": data.PRIMARY_BALANCE_BASELINE.cells},
+    )
+    shock_year: Annotated[int, Between(1, 5)] = _field(
+        metadata={"default": data.SHOCK_YEAR_DEFAULT, "cells": data.SHOCK_YEAR_CELLS},
+    )
+    shock_type: Literal[1, 2, 3] = _field(
+        metadata={"default": data.SHOCK_TYPE_DEFAULT, "cells": data.SHOCK_TYPE_CELLS},
+    )
+    shock_magnitudes: data.ShockMagnitudes = _field(
+        metadata={"default": data.SHOCK_MAGNITUDES_DEFAULT, "cells": data.SHOCK_MAGNITUDES.cells},
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
 class OutputDeltaInputs(_SnapshotInputs):
     """Bound input leaves for `compute_output_delta`."""
 
-    country_name: Literal["Aurelium", "Borvelia", "Litellia"]
-    country_initial_debt: data.CountryInitialDebt
-    growth_baseline: data.GrowthBaseline
-    interest_baseline: data.InterestBaseline
-    primary_balance_baseline: data.PrimaryBalanceBaseline
-    shock_year: Annotated[int, Between(1, 5)]
-    shock_type: Literal[1, 2, 3]
-    shock_magnitudes: data.ShockMagnitudes
+    country_name: Literal["Aurelium", "Borvelia", "Litellia"] = _field(
+        metadata={"default": data.COUNTRY_NAME_DEFAULT, "cells": data.COUNTRY_NAME_CELLS},
+    )
+    country_initial_debt: data.CountryInitialDebt = _field(
+        metadata={"default": data.COUNTRY_INITIAL_DEBT_DEFAULT, "cells": data.COUNTRY_INITIAL_DEBT.cells},
+    )
+    growth_baseline: data.GrowthBaseline = _field(
+        metadata={"default": data.GROWTH_BASELINE_DEFAULT, "cells": data.GROWTH_BASELINE.cells},
+    )
+    interest_baseline: data.InterestBaseline = _field(
+        metadata={"default": data.INTEREST_BASELINE_DEFAULT, "cells": data.INTEREST_BASELINE.cells},
+    )
+    primary_balance_baseline: data.PrimaryBalanceBaseline = _field(
+        metadata={"default": data.PRIMARY_BALANCE_BASELINE_DEFAULT, "cells": data.PRIMARY_BALANCE_BASELINE.cells},
+    )
+    shock_year: Annotated[int, Between(1, 5)] = _field(
+        metadata={"default": data.SHOCK_YEAR_DEFAULT, "cells": data.SHOCK_YEAR_CELLS},
+    )
+    shock_type: Literal[1, 2, 3] = _field(
+        metadata={"default": data.SHOCK_TYPE_DEFAULT, "cells": data.SHOCK_TYPE_CELLS},
+    )
+    shock_magnitudes: data.ShockMagnitudes = _field(
+        metadata={"default": data.SHOCK_MAGNITUDES_DEFAULT, "cells": data.SHOCK_MAGNITUDES.cells},
+    )
 
 
 __all__ = [

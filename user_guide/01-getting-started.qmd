@@ -14,13 +14,11 @@ The package import path for the calculation functions is `tiny_dsa.api`.
 
 ## A first projection
 
-The API takes the country profile values and the scenario inputs explicitly.
-The default profile contains three countries, in this order:
-`Borvelia`, `Litellia`, and `Aurelium`. The three debt values must stay aligned
-with that order.
+Each calculation takes one input bundle. `from_defaults()` fills every field
+with the workbook default, so a first run needs no arguments.
 
 ```{python}
-from tiny_dsa import api, data
+from tiny_dsa import api
 from tiny_dsa.runtime import as_records
 
 baseline = api.compute_output_baseline(
@@ -34,6 +32,15 @@ The result is a labelled series for projection years 1 through 5. With the canon
 defaults, the values are approximately 61.29, 62.09, 62.39, 62.19, and 61.49
 percent of GDP.
 
+To see what a bundle accepts (each field's allowed values, axes, default, and
+source worksheet cell), call `describe()`:
+
+```{python}
+list(api.OutputBaselineInputs.describe())
+```
+
+[Inputs and outputs](inputs-and-outputs.qmd) covers `describe()` in detail.
+
 ## Add a shock
 
 Choose one shock type:
@@ -45,19 +52,11 @@ Choose one shock type:
 | 3 | Primary balance | -1.0 percentage points |
 
 `shock_year` is the first affected projection year. The selected magnitude is
-then applied in every subsequent year.
+then applied in every subsequent year. Pass only the fields you want to
+change; the rest keep their workbook defaults.
 
 ```{python}
-scenario = dict(
-    country_name="Borvelia",
-    country_initial_debt=data.COUNTRY_INITIAL_DEBT_DEFAULT,
-    growth_baseline=data.GROWTH_BASELINE_DEFAULT,
-    interest_baseline=data.INTEREST_BASELINE_DEFAULT,
-    primary_balance_baseline=data.PRIMARY_BALANCE_BASELINE_DEFAULT,
-    shock_year=2,
-    shock_type=1,
-    shock_magnitudes=data.SHOCK_MAGNITUDES_DEFAULT,
-)
+scenario = dict(country_name="Borvelia", shock_year=2, shock_type=1)
 
 shocked = api.compute_output_shocked(
     api.OutputShockedInputs.from_defaults(**scenario)
