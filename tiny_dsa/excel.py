@@ -1,19 +1,20 @@
 """Excel value semantics shared by the generated model functions."""
 from __future__ import annotations
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from enum import StrEnum
 from importlib import import_module
 from types import ModuleType
-from typing import Any, TypeAlias, TypeGuard, TypeVar, cast, Literal, NoReturn, overload
+from typing import Any, Protocol, TypeAlias, TypeGuard, TypeVar, cast, runtime_checkable, Literal, NoReturn, overload
 import math
 import numbers
 import re
 MIN_OPERATOR_FASTPATH_CELLS = 64
 NormalizedAddress: TypeAlias = str
 T = TypeVar('T', str, float)
+V = TypeVar('V')
 
 class CoreXlError(StrEnum):
     VALUE = '#VALUE!'
@@ -48,6 +49,16 @@ class XlErrorException(Exception):
         self.code = code
         super().__init__(code.value)
 _EXCEL_EPOCH = datetime(1899, 12, 30)
+
+@runtime_checkable
+class _NamedTensor(Protocol):
+    """A generated `Series`: coordinate-keyed members that rebuild over one domain."""
+
+    def items(self) -> Iterable[tuple[object, object]]:
+        ...
+
+    def with_values(self, values: Sequence[Any], /) -> Any:
+        ...
 _PLAIN_SCALAR_TYPES = frozenset({bool, int, float, str, type(None)})
 
 def _apply_cmp(op: str, cmp: int) -> bool:
@@ -145,20 +156,24 @@ def _is_between_int(value: object) -> TypeGuard[int]:
 def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
     return isinstance(value, Mapping) and (not isinstance(value, (str, bytes, bytearray)))
 
-def _coerce_named_tensor(value: object, dtype: str, enum: object | None=None) -> object | None:
-    """Rewrite tensor members when `value` looks like a generated `Series`."""
-    domain = getattr(value, 'domain', None)
-    items = getattr(value, 'items', None)
-    if domain is None or not callable(items) or _is_mapping(value):
-        return None
-    coerced = tuple((_coerce_one(member, dtype, enum) for _coord, member in items()))
-    replace = getattr(value, 'with_values', None)
-    if callable(replace):
-        return replace(coerced)
-    return cast(Any, type(value))(domain, coerced)
-
 def _is_measure_sequence(value: object) -> TypeGuard[Sequence[object]]:
     return isinstance(value, Sequence) and (not isinstance(value, (str, bytes, bytearray)))
+
+def _is_named_tensor(value: object) -> TypeGuard[_NamedTensor]:
+    return isinstance(value, _NamedTensor) and (not _is_mapping(value))
+
+def _coerce_measure(value: object, dtype: str, enum: object | None) -> object:
+    if _is_named_tensor(value):
+        return value.with_values(tuple((_coerce_one(member, dtype, enum) for _coord, member in value.items())))
+    if _is_measure_sequence(value):
+        members = [_coerce_one(member, dtype, enum) for member in value]
+        if isinstance(value, tuple):
+            return tuple(members)
+        if isinstance(value, list):
+            return members
+        rebuild = cast('Callable[[list[object]], object]', type(value))
+        return rebuild(members)
+    return _coerce_one(value, dtype, enum)
 
 def _is_real_number(value: object) -> TypeGuard[int | float]:
     """Return whether `value` is a non-bool int or float (`real_between`)."""
@@ -318,7 +333,7 @@ def apply_input_value_map(value: object, mapping: Mapping[Any, Any], *, series_i
         keys = ', '.join((repr(key) for key in sorted(mapping, key=repr)))
         raise ValueError(f'{series_id} value {value!r} is not in value_map; expected one of {{{keys}}}') from None
 
-def coerce_input_measure(value: object, dtype: str, *, series_id: str, enum: object | None=None) -> object:
+def coerce_input_measure(value: V, dtype: str, *, series_id: str, enum: object | None=None) -> V:
     """Rewrite a public compute input using setter dtype rules.
 
     `int` becomes `float` when `dtype` is `float`. Sequences and tensors are
@@ -336,19 +351,10 @@ def coerce_input_measure(value: object, dtype: str, *, series_id: str, enum: obj
         enum: Optional union enum. Members keep the caller's runtime type.
 
     Returns:
-        The value, possibly after a safe `int` -> `float` coercion.
+        The value in the same shape and container type, possibly after a safe
+        `int` -> `float` coercion of its members.
     """
-    tensor = _coerce_named_tensor(value, dtype, enum)
-    if tensor is not None:
-        return tensor
-    if _is_measure_sequence(value):
-        members = [_coerce_one(member, dtype, enum) for member in value]
-        if isinstance(value, tuple):
-            return tuple(members)
-        if isinstance(value, list):
-            return members
-        return type(value)(members)
-    return _coerce_one(value, dtype, enum)
+    return cast(V, _coerce_measure(value, dtype, enum))
 
 def datetime_to_excel_serial(value: datetime) -> float:
     """Convert a naive datetime to an Excel day serial (1900 date system)."""
@@ -587,6 +593,8 @@ def _as_nested_rows_from_ndarray(value: object) -> list[list[CellValue]] | None:
     if ndim == 0:
         return None
     raw = tolist()
+    if not isinstance(raw, list):
+        return None
     if ndim == 1:
         return [[cast(CellValue, cell)] for cell in raw]
     return cast('list[list[CellValue]]', raw)
@@ -620,15 +628,17 @@ class Grid:
             return Grid(nrows, ncols, None, None, value)
         ndarray_rows = _as_nested_rows_from_ndarray(value)
         if ndarray_rows is not None:
-            if not ndarray_rows:
-                ndarray_rows = [[None]]
-            return Grid(len(ndarray_rows), len(ndarray_rows[0]), None, ndarray_rows)
+            return Grid._from_rows(ndarray_rows)
         if isinstance(value, (list, tuple)):
-            rows = [list(row) if isinstance(row, (list, tuple)) else [row] for row in cast('list[CellValue]', value)]
-            if not rows:
-                rows = [[None]]
-            return Grid(len(rows), len(rows[0]), None, cast('list[list[CellValue]]', rows))
+            return Grid._from_rows([list(row) if isinstance(row, (list, tuple)) else [row] for row in cast('list[CellValue]', value)])
         return None
+
+    @staticmethod
+    def _from_rows(rows: list[list[CellValue]]) -> Grid:
+        """Wrap nested rows, standing in a single blank cell for an empty array."""
+        if not rows:
+            rows = [[None]]
+        return Grid(len(rows), len(rows[0]), None, rows)
 
     @property
     def array(self) -> object:
@@ -779,7 +789,7 @@ def _raise_if_error(value: object) -> CellValue:
         raise XlErrorException(value)
     return cast(CellValue, value)
 
-def as_scalar(value: object) -> float | int | str | bool | CoreXlError | None:
+def as_scalar(value: object) -> Scalar:
     """Collapse range/array values to `#VALUE!` for scalar coercion contexts.
 
     Lazy `Range`, unbound `ExcelRange`, and nested lists are not valid scalar
@@ -794,7 +804,7 @@ def as_scalar(value: object) -> float | int | str | bool | CoreXlError | None:
         return cast('float | int | str | bool | None', value)
     if isinstance(value, (Range, ExcelRange, list, tuple)) or _is_ndarray_like(value):
         return CoreXlError.VALUE
-    return cast('float | int | str | bool | XlError | None', value)
+    return cast(Scalar, value)
 
 def flatten(*args: object) -> Iterator[FormulaValue]:
     """Flatten nested lists, lazy `Range` values, and ndarray buffers in row-major order.

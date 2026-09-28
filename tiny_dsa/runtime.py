@@ -32,6 +32,8 @@ from .tensor import Axis, Domain, DomainTemplate, SchemaTemplate, Tensor, Tensor
 from .excel import XlError, _as_number
 
 if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
     from .provenance import ProvenanceTemplate
 
 T = TypeVar("T")
@@ -466,7 +468,7 @@ class InputField:
         return 1 if self.domain is None else len(self.domain)
 
 
-def describe_inputs(record: type) -> dict[str, InputField]:
+def describe_inputs(record: type[DataclassInstance]) -> dict[str, InputField]:
     """Describe each field of a generated `*Inputs` record in declaration order."""
     hints = get_type_hints(record, include_extras=True)
     described: dict[str, InputField] = {}
@@ -490,6 +492,15 @@ def describe_inputs(record: type) -> dict[str, InputField]:
     return described
 
 
+def _tensor_records(
+    keys: Sequence[str], result: Tensor[T], measure: str
+) -> list[dict[str, object]]:
+    """Zip each tensor coordinate with `keys` and add its value under `measure`."""
+    return [
+        {**dict(zip(keys, coord, strict=True)), measure: value} for coord, value in result.items()
+    ]
+
+
 def as_records(
     compute: KeyedCompute,
     result: object,
@@ -506,17 +517,11 @@ def as_records(
     if isinstance(domain, DomainTemplate):
         if not isinstance(result, Tensor):
             raise ValueError("result must be a Tensor over the declared result domain")
-        return [
-            dict(zip(keys, coord, strict=True)) | {measure: value}
-            for coord, value in result.items()
-        ]
+        return _tensor_records(keys, result, measure)
     if isinstance(domain, Domain):
         if not isinstance(result, Tensor) or result.domain != domain:
             raise ValueError("result must be a Tensor over the declared result domain")
-        return [
-            dict(zip(keys, coord, strict=True)) | {measure: value}
-            for coord, value in result.items()
-        ]
+        return _tensor_records(keys, result, measure)
     if domain is None:
         return [{measure: result}]
     if not isinstance(result, Sequence):
