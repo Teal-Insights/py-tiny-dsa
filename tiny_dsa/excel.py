@@ -65,12 +65,6 @@ def _apply_cmp(op: str, cmp: int) -> bool:
         return cmp >= 0
     raise ValueError(f'Unknown comparison operator: {op}')
 
-def _coerce_one(value: object, dtype: str) -> object:
-    """Rewrite `int` to `float` when `dtype` is `float`; otherwise return `value`."""
-    if dtype == 'float' and (not isinstance(value, bool)) and isinstance(value, int):
-        return float(value)
-    return value
-
 def _criteria_compare(op: str, left: T, right: T) -> bool:
     """Compare two values of the same type."""
     if op == '=':
@@ -97,6 +91,18 @@ def _enum_contains(value: object, allowed: object) -> bool:
         return False
     return any((type(value) is type(item) and value == item for item in allowed))
 
+def _coerce_one(value: object, dtype: str, enum: object | None=None) -> object:
+    """Rewrite `int` to `float` when `dtype` is `float`, keeping enum members.
+
+    A value that is already a member of `enum` is returned unchanged so a
+    later type-strict domain check still sees the caller's type.
+    """
+    if enum is not None and _enum_contains(value, enum):
+        return value
+    if dtype == 'float' and (not isinstance(value, bool)) and isinstance(value, int):
+        return float(value)
+    return value
+
 def _escape_sheet_for_formula(sheet: str) -> str:
     """Escape apostrophes for use inside quoted sheet names."""
     return sheet.replace("'", "''")
@@ -109,17 +115,22 @@ def _format_general_number(value: float | int) -> str:
 
 def _format_measure_domain(domain: Mapping[str, Any]) -> str:
     """Render a measure domain for error messages."""
+    parts: list[str] = []
     if 'enum' in domain:
         values = domain['enum']
         rendered = ', '.join((repr(value) for value in sorted(values, key=repr)))
-        return f'{{{rendered}}}'
+        parts.append(f'{{{rendered}}}')
     if 'between' in domain:
         bounds = domain['between']
-        return f"between(min={bounds.get('min')!r}, max={bounds.get('max')!r})"
+        parts.append(f"between(min={bounds.get('min')!r}, max={bounds.get('max')!r})")
     if 'real_between' in domain:
         bounds = domain['real_between']
-        return f"real_between(min={bounds.get('min')!r}, max={bounds.get('max')!r})"
-    return repr(dict(domain))
+        parts.append(f"real_between(min={bounds.get('min')!r}, max={bounds.get('max')!r})")
+    if not parts:
+        return repr(dict(domain))
+    if len(parts) == 1:
+        return parts[0]
+    return ' or '.join(parts)
 
 def _in_closed_bounds(value: int | float, bounds: Mapping[str, Any]) -> bool:
     """Return whether `value` lies in an inclusive min/max interval."""
@@ -134,13 +145,13 @@ def _is_between_int(value: object) -> TypeGuard[int]:
 def _is_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
     return isinstance(value, Mapping) and (not isinstance(value, (str, bytes, bytearray)))
 
-def _coerce_named_tensor(value: object, dtype: str) -> object | None:
+def _coerce_named_tensor(value: object, dtype: str, enum: object | None=None) -> object | None:
     """Rewrite tensor members when `value` looks like a generated `Series`."""
     domain = getattr(value, 'domain', None)
     items = getattr(value, 'items', None)
     if domain is None or not callable(items) or _is_mapping(value):
         return None
-    coerced = tuple((_coerce_one(member, dtype) for _coord, member in items()))
+    coerced = tuple((_coerce_one(member, dtype, enum) for _coord, member in items()))
     replace = getattr(value, 'with_values', None)
     if callable(replace):
         return replace(coerced)
@@ -152,6 +163,10 @@ def _is_measure_sequence(value: object) -> TypeGuard[Sequence[object]]:
 def _is_real_number(value: object) -> TypeGuard[int | float]:
     """Return whether `value` is a non-bool int or float (`real_between`)."""
     return isinstance(value, (int, float)) and (not isinstance(value, bool))
+
+def _is_union_measure_domain(domain: Mapping[str, Any]) -> bool:
+    """Return whether `domain` offers more than one alternative arm."""
+    return sum((key in domain for key in ('enum', 'between', 'real_between'))) > 1
 
 def _ndarray_grid_shape(value: object) -> tuple[int, int] | None:
     """Read a 1-D/2-D ndarray-like shape as ``(nrows, ncols)`` without converting it.
@@ -180,6 +195,11 @@ def _parse_countif_criteria(criteria: str) -> tuple[str | None, str]:
             return (op, s[len(op):].strip())
     return (None, s)
 
+def _reject_combined_intervals(domain: Mapping[str, Any]) -> None:
+    """Reject a domain that declares both integer and real intervals."""
+    if 'between' in domain and 'real_between' in domain:
+        raise ValueError('union domain cannot combine between and real_between constraints')
+
 def _round_half_away_from_zero(number: float, digits: int) -> float:
     """Round `number` to `digits` places using Excel ROUND (ties away from 0)."""
     if digits > 308:
@@ -196,8 +216,8 @@ def _try_import_numpy() -> ModuleType | None:
     except ImportError:
         return None
 
-def _value_in_measure_domain(value: object, domain: Mapping[str, Any]) -> bool:
-    """Return whether `value` is inside a measure domain declaration."""
+def _value_in_single_arm(value: object, domain: Mapping[str, Any]) -> bool:
+    """Return whether `value` matches one enum or interval arm."""
     if 'enum' in domain:
         return _enum_contains(value, domain['enum'])
     if 'between' in domain:
@@ -210,14 +230,26 @@ def _value_in_measure_domain(value: object, domain: Mapping[str, Any]) -> bool:
         return _in_closed_bounds(value, domain['real_between'])
     return True
 
+def _value_in_measure_domain(value: object, domain: Mapping[str, Any]) -> bool:
+    """Return whether `value` is inside a measure domain declaration.
+
+    A union matches when any arm matches. A type that an interval arm rejects
+    can still match the enum arm.
+    """
+    if _is_union_measure_domain(domain):
+        return any((_value_in_single_arm(value, {key: domain[key]}) for key in ('enum', 'between', 'real_between') if key in domain))
+    return _value_in_single_arm(value, domain)
+
 def _reject_out_of_domain(value: object, domain: Mapping[str, Any], *, label: str) -> None:
     """Raise `ValueError` when a non-null `value` is outside `domain`."""
+    _reject_combined_intervals(domain)
     if value is None:
         return
-    if 'between' in domain and (not _is_between_int(value)):
-        raise ValueError(f'{label} has type {type(value).__name__}; between requires int')
-    if 'real_between' in domain and (not _is_real_number(value)):
-        raise ValueError(f'{label} has type {type(value).__name__}; real_between requires int or float')
+    if not _is_union_measure_domain(domain):
+        if 'between' in domain and (not _is_between_int(value)):
+            raise ValueError(f'{label} has type {type(value).__name__}; between requires int')
+        if 'real_between' in domain and (not _is_real_number(value)):
+            raise ValueError(f'{label} has type {type(value).__name__}; real_between requires int or float')
     if not _value_in_measure_domain(value, domain):
         raise ValueError(f'{label} out of domain: {value!r} not in {_format_measure_domain(domain)}')
 
@@ -286,32 +318,37 @@ def apply_input_value_map(value: object, mapping: Mapping[Any, Any], *, series_i
         keys = ', '.join((repr(key) for key in sorted(mapping, key=repr)))
         raise ValueError(f'{series_id} value {value!r} is not in value_map; expected one of {{{keys}}}') from None
 
-def coerce_input_measure(value: object, dtype: str, *, series_id: str) -> object:
+def coerce_input_measure(value: object, dtype: str, *, series_id: str, enum: object | None=None) -> object:
     """Rewrite a public compute input using setter dtype rules.
 
     `int` becomes `float` when `dtype` is `float`. Sequences and tensors are
     rewritten memberwise. Other measure values (`str` error codes, bools,
     `None`) pass through. `float` is never narrowed to `int`.
 
+    When `enum` is the literal arm of a union, members are returned unchanged.
+    A value that is not a member is coerced, then the domain check can still
+    accept it through the interval or through an enum member of the coerced type.
+
     Args:
         value: One measure, a catalog-order sequence, or a named tensor.
         dtype: Binding measure dtype (`float`, `int`, `number`, ...).
         series_id: Binding series id; reserved for type-error messages.
+        enum: Optional union enum. Members keep the caller's runtime type.
 
     Returns:
         The value, possibly after a safe `int` -> `float` coercion.
     """
-    tensor = _coerce_named_tensor(value, dtype)
+    tensor = _coerce_named_tensor(value, dtype, enum)
     if tensor is not None:
         return tensor
     if _is_measure_sequence(value):
-        members = [_coerce_one(member, dtype) for member in value]
+        members = [_coerce_one(member, dtype, enum) for member in value]
         if isinstance(value, tuple):
             return tuple(members)
         if isinstance(value, list):
             return members
         return type(value)(members)
-    return _coerce_one(value, dtype)
+    return _coerce_one(value, dtype, enum)
 
 def datetime_to_excel_serial(value: datetime) -> float:
     """Convert a naive datetime to an Excel day serial (1900 date system)."""
@@ -810,12 +847,17 @@ def require_input_domain(value: object, domain: Mapping[str, Any], *, series_id:
     Args:
         value: One measure, or a catalog-order sequence of measures.
         domain: Normalized `enum` / `between` / `real_between` declaration.
+            A mapping with `enum` and exactly one interval is a union: a value
+            matches when it is an enum member or lies in the interval.
         series_id: Binding series id used in the error message.
 
     Raises:
-        ValueError: When any non-`None` member is outside `domain`, or has a
+        ValueError: When `domain` combines `between` and `real_between`, when
+            any non-`None` member is outside `domain`, or when a value has a
             type the domain kind does not accept (`between` requires `int`).
+            Union mismatches name the whole domain, not the first failing arm.
     """
+    _reject_combined_intervals(domain)
     if _is_measure_sequence(value):
         for index, member in enumerate(value):
             _reject_out_of_domain(member, domain, label=f'{series_id}[{index}]')
@@ -1244,7 +1286,10 @@ def index_cells(array: object, row_num: object=None, col_num: object=None) -> ob
     when only one of `row_num` / `col_num` selects a vector.
 
     A `row_num` or `col_num` of `0` selects the entire column or row (Excel
-    whole-vector form). Both `0` returns the full array.
+    whole-vector form). Both `0` returns the full array. `col_num is None` is
+    the two-argument form: a vector index, or `#REF!` when `array` has more
+    than one row and column. Callers pass `0` for an empty third argument
+    (`INDEX(array, row,)`).
     """
     grid = Grid.wrap(array)
     if grid is None:
@@ -1293,9 +1338,7 @@ def index_cells(array: object, row_num: object=None, col_num: object=None) -> ob
             if row < 1 or row > nrows:
                 return CoreXlError.REF
             return grid.at(row - 1, 0)
-        if row < 1 or row > nrows:
-            return CoreXlError.REF
-        return grid.row_slice(row - 1)
+        return CoreXlError.REF
     col_s = as_scalar(col_num)
     if isinstance(col_s, CoreXlError):
         return col_s
@@ -1535,6 +1578,27 @@ def min_cells(*args: CellValue) -> float | CoreXlError:
     if not found:
         return 0.0
     return current
+
+def normdist_value(x: CellValue, mean: CellValue, standard_dev: CellValue, cumulative: CellValue) -> float | CoreXlError:
+    """Return the normal distribution value."""
+    xx = to_number(x)
+    if isinstance(xx, CoreXlError):
+        return xx
+    mm = to_number(mean)
+    if isinstance(mm, CoreXlError):
+        return mm
+    sd = to_number(standard_dev)
+    if isinstance(sd, CoreXlError):
+        return sd
+    if sd <= 0:
+        return CoreXlError.NUM
+    cc = to_bool(cumulative)
+    if isinstance(cc, CoreXlError):
+        return cc
+    z = (xx - mm) / sd
+    if cc:
+        return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+    return 1.0 / (sd * math.sqrt(2.0 * math.pi)) * math.exp(-0.5 * z * z)
 
 def npv_cells(rate: CellValue, *values: CellValue) -> float | CoreXlError:
     """Return net present value for a rate and cash flows."""
@@ -1919,6 +1983,13 @@ def _core_add(left: FormulaValue, right: FormulaValue) -> FormulaValue:
 
 def _core_concat(left: FormulaValue, right: FormulaValue) -> FormulaValue:
     return _xl_concat(left, right)
+
+def _shared_count(*args: CellValue) -> int:
+    count = 0
+    for v in flatten(*args):
+        if isinstance(v, (int, float)) and (not isinstance(v, bool)):
+            count += 1
+    return count
 
 def _shared_countif(range_values: CellValue, criteria: CellValue) -> int:
     """Count cells matching criteria, raising on Excel errors."""
@@ -2380,6 +2451,19 @@ def xl_exp(*args: object) -> object:
     return _adapt_core(exp_number(*cast(tuple[CellValue, ...], args)))
 
 
+def xl_normdist(*args: object) -> object:
+    """Excel `NORMDIST` via `core.math_funcs.normdist_value`.
+
+    Cumulative `TRUE` or `1` is the CDF. A non-positive standard deviation
+    raises `#NUM!`.
+    """
+    for arg in args:
+        _raise_stored_error(arg)
+    if len(args) != 4:
+        raise XlError("#VALUE!")
+    return _adapt_core(normdist_value(*cast(tuple[CellValue, ...], args)))
+
+
 def xl_abs(*args: object) -> object:
     """Excel `ABS` via `core.math_funcs.abs_number`."""
     for arg in args:
@@ -2639,6 +2723,11 @@ def xl_large(*args: object) -> object:
 def xl_stdev(*args: object) -> object:
     """Compute STDEV with the shared statistical implementation."""
     return _shared_value(_shared_stdev, *args)
+
+
+def xl_count(*args: object) -> object:
+    """Count numeric values with the shared COUNT implementation."""
+    return _shared_value(_shared_count, *args)
 
 
 def xl_countif(*args: object) -> object:

@@ -6,8 +6,9 @@ operators live in `excel.py`.
 
 from __future__ import annotations
 
+import types
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from itertools import product
 from types import MappingProxyType
 from typing import (
@@ -18,9 +19,11 @@ from typing import (
     Literal,
     Protocol,
     TypeVar,
+    Union,
     cast,
     get_args,
     get_origin,
+    get_type_hints,
 )
 
 from .excel import Range
@@ -60,7 +63,8 @@ def require_annotated_domain(value: object, annotation: Any, *, series_id: str) 
     `None` is not a domain failure. `Literal` membership uses `get_args` and
     requires the same runtime type as the declared member so `1` is not
     accepted for `Literal[True, False]`. Interval checks read `Between` and
-    `RealBetween` metadata on `Annotated`.
+    `RealBetween` metadata on `Annotated`. A union matches when any arm
+    matches.
 
     Args:
         value: One coerced measure.
@@ -75,6 +79,11 @@ def require_annotated_domain(value: object, annotation: Any, *, series_id: str) 
     if value is None:
         return
     origin = get_origin(annotation)
+    if origin is Union or origin is types.UnionType:
+        if any(_annotated_domain_accepts(value, arm) for arm in get_args(annotation)):
+            return
+        rendered = " | ".join(_describe_domain_arm(arm) for arm in get_args(annotation))
+        raise ValueError(f"{series_id} out of domain: {value!r} not in {rendered}")
     if origin is Literal:
         allowed = get_args(annotation)
         if not _literal_contains(value, allowed):
@@ -90,6 +99,29 @@ def require_annotated_domain(value: object, annotation: Any, *, series_id: str) 
                 _require_real_between(value, meta, series_id=series_id)
                 return
     raise ValueError(f"{series_id} has no enforceable domain annotation: {annotation!r}")
+
+
+def _annotated_domain_accepts(value: object, annotation: Any) -> bool:
+    """Return whether `value` matches one generated domain arm."""
+    try:
+        require_annotated_domain(value, annotation, series_id="_")
+    except ValueError:
+        return False
+    return True
+
+
+def _describe_domain_arm(annotation: Any) -> str:
+    """Render one union arm for an out-of-domain message."""
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return "{" + ", ".join(repr(item) for item in get_args(annotation)) + "}"
+    if origin is Annotated:
+        for meta in get_args(annotation)[1:]:
+            if isinstance(meta, Between):
+                return f"between(min={meta.min!r}, max={meta.max!r})"
+            if isinstance(meta, RealBetween):
+                return f"real_between(min={meta.min!r}, max={meta.max!r})"
+    return repr(annotation)
 
 
 def _literal_contains(value: object, allowed: tuple[object, ...]) -> bool:
@@ -395,6 +427,67 @@ def take(values: Sequence[T], indices: Sequence[int] | slice) -> tuple[T, ...]:
             raise ValueError(f"take index {index} is outside series of length {length}")
         result.append(values[index])
     return tuple(result)
+
+
+@dataclass(frozen=True)
+class InputField:
+    """Public description of one field of a generated `*Inputs` record.
+
+    Attributes:
+        name: Field name, which is also the input series id.
+        values: Annotation of one value, including `Literal` choices or
+            `Annotated` bounds.
+        domain: Coordinate domain (axes and keys) of a series input, or `None`
+            for a scalar. This is not the binding's value `domain`; value
+            bounds and choices live on `values`.
+        default: Workbook default bound by `from_defaults`.
+        cells: Authored worksheet cells keyed by coordinate.
+    """
+
+    name: str
+    values: object
+    domain: Domain | None
+    default: object
+    cells: object
+
+    @property
+    def is_series(self) -> bool:
+        """Whether the field is a tensor over named axes."""
+        return self.domain is not None
+
+    @property
+    def axes(self) -> tuple[Axis, ...]:
+        """Named axes in declaration order; empty for a scalar."""
+        return () if self.domain is None else self.domain.axes
+
+    @property
+    def size(self) -> int:
+        """Number of values the field holds."""
+        return 1 if self.domain is None else len(self.domain)
+
+
+def describe_inputs(record: type) -> dict[str, InputField]:
+    """Describe each field of a generated `*Inputs` record in declaration order."""
+    hints = get_type_hints(record, include_extras=True)
+    described: dict[str, InputField] = {}
+    for spec in fields(record):
+        default = spec.metadata["default"]
+        domain = default.domain if isinstance(default, Tensor) else None
+        hint = hints[spec.name]
+        values = hint
+        if domain is not None:
+            args = get_args(hint)
+            if not args:
+                raise TypeError(f"{spec.name}: series annotation {hint!r} is not parameterized")
+            values = args[0]
+        described[spec.name] = InputField(
+            name=spec.name,
+            values=values,
+            domain=domain,
+            default=default,
+            cells=spec.metadata["cells"],
+        )
+    return described
 
 
 def as_records(

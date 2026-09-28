@@ -19,5 +19,6 @@ __all__ = [
     "compute_output_delta",
 ]
 
+from .runtime import InputField
 from .tensor import Axis, Domain, Series, Tensor, TensorSchema
-__all__ += ['Axis', 'Domain', 'Series', 'Tensor', 'TensorSchema']
+__all__ += ['Axis', 'Domain', 'InputField', 'Series', 'Tensor', 'TensorSchema']
