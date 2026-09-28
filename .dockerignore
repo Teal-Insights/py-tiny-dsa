@@ -1,0 +1,12 @@
+.git
+.venv
+great-docs
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.cache
+*.egg-info
+.github
+docs-source
+user_guide
+README_files

@@ -1,0 +1,19 @@
+[
+  ".dockerignore",
+  "_quarto.yml",
+  "assets/graph/app.js",
+  "assets/graph/bootstrap.json",
+  "assets/graph/config.js",
+  "assets/graph/index.html",
+  "assets/graph/README.md",
+  "assets/graph/style.css",
+  "Dockerfile",
+  "railway.toml",
+  "scripts/check_graph_eval.py",
+  "scripts/serve_graph_api.py",
+  "scripts/write_graph_bootstrap.py",
+  "tests/test_graph_api.py",
+  "tiny_dsa/graph_api.py",
+  "tiny_dsa/graph_formula_evaluator.py",
+  "tiny_dsa/graph_schema.py"
+]

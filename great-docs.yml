@@ -1,4 +1,3 @@
-homepage: index
 seo:
   enabled: false
 # Great Docs Configuration
@@ -12,6 +11,7 @@ module: tiny_dsa
 site_url: "https://teal-insights.github.io/py-tiny-dsa/"
 repo: https://github.com/Teal-Insights/py-tiny-dsa
 display_name: Tiny DSA
+# First user-guide page (user_guide/index.qmd) is the site landing page.
 homepage: user_guide
 
 # Docstring Parser
@@ -108,4 +108,3 @@ jupyter: 'C:/Users/chris/Software/tiny-dsa-extraction-pipeline/.venv/Scripts/pyt
 #       - SimpleClass          # Methods documented inline (default)
 #
 # After editing, run 'great-docs build' to generate your documentation.
-homepage: index
