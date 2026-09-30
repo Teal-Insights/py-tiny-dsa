@@ -98,11 +98,7 @@ policy decisions without a substantially richer model and independent review.
 
 ## Interactive dependency graph
 
-Each node is one bound series. Columns are **topological layers** (longest
-path in the dependency DAG), so edges only run forward between columns — not
-within a layer. Node colors mark input / internal / output. Click the diagram
-to open the fullscreen interactive explorer (edit amber inputs, drag nodes,
-Ctrl+Z undo).
+Each node is one bound series. Yellow nodes at left are input series; blue nodes at center are internals series; green nodes at right are output series. Click the diagram to open the fullscreen interactive explorer. You can click to edit the inputs and watch the change cascade through the internal calculations to the outputs. Pan, zoom, or drag nodes to explore the graph.
 
 ```{=html}
 <a

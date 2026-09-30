@@ -993,6 +993,12 @@ def _year_values(result: object, *, name: str) -> tuple[object, ...]:
 
 
 def mvp_outputs_for_scenario(api: ModuleType, scenario: Scenario) -> dict[str, Any]:
+    """Call ``compute_*`` with ``{Output}Inputs.from_defaults(...)`` and return ``{label: value}``.
+
+    Scenario overrides are bound onto the package's ``data.*_DEFAULT`` series,
+    then each output gets its own ``model.{Output}Inputs.from_defaults(...)``
+    bundle. Results map onto ``OUTPUT_RANGES`` labels as ``{name}[year=N]``.
+    """
     inputs = _as_inputs(scenario)
     if api.__package__ is None:
         raise RuntimeError(
