@@ -12,6 +12,8 @@
   const LAYER_GAP_X = 280;
   const LAYER_ROW = 78;
   const LAYER_TOP = 70;
+  const FORCE_GAP_X = 40;
+  const FORCE_GAP_Y = 18;
 
   const PREVIEW =
     typeof document !== "undefined" &&
@@ -36,6 +38,10 @@
   const positionUndo = [];
   let dragOrigin = null;
   let apiBase = "";
+  /** Precomputed force layout from layout.json, or null. */
+  let STARTER_LAYOUT = null;
+  /** @type {"force" | "layered"} */
+  let layoutMode = "layered";
 
   function trimSlash(url) {
     return String(url || "").replace(/\/+$/, "");
@@ -176,6 +182,16 @@
       }
     }
     throw lastError || new Error("Could not load graph bootstrap");
+  }
+
+  /** layout.json is written by the export pipeline; absent when no series are authored. */
+  async function loadStarterLayout() {
+    try {
+      const data = await fetchJson(new URL("./layout.json", window.location.href).href);
+      return data && data.positions ? data : null;
+    } catch (_err) {
+      return null;
+    }
   }
 
   async function evaluateRemote(nextInputs) {
@@ -374,6 +390,52 @@
         });
       });
     });
+  }
+
+  function applyForceLayout(cyInstance) {
+    const sizes = {};
+    cyInstance.nodes("node.series").forEach((node) => {
+      sizes[node.id()] = { width: node.data("width"), height: node.data("height") };
+    });
+    const placed = globalThis.SeriesGraphForceLayout.placeNodes({
+      positions: STARTER_LAYOUT.positions,
+      sizes,
+      linkDistance: STARTER_LAYOUT.link_distance,
+      gapX: FORCE_GAP_X,
+      gapY: FORCE_GAP_Y,
+    });
+    if (!placed) {
+      console.warn("layout.json does not cover every series; using the layered layout");
+      return false;
+    }
+    for (const [id, pos] of Object.entries(placed)) {
+      cyInstance.$id(id).position(pos);
+    }
+    return true;
+  }
+
+  function applyLayout(cyInstance) {
+    if (layoutMode === "force" && !applyForceLayout(cyInstance)) {
+      layoutMode = "layered";
+    }
+    if (layoutMode === "layered") applyNeuralLayout(cyInstance);
+    // Layered edges leave the right side and enter the left; force edges may run any way.
+    cyInstance.edges("edge.dep").toggleClass("force", layoutMode === "force");
+    syncLayoutButton();
+  }
+
+  function syncLayoutButton() {
+    const button = document.getElementById("btn-layout");
+    if (!button) return;
+    button.hidden = !STARTER_LAYOUT;
+    button.textContent = layoutMode === "force" ? "Layered layout" : "Force layout";
+  }
+
+  function toggleLayout() {
+    layoutMode = layoutMode === "force" ? "layered" : "force";
+    positionUndo.length = 0;
+    applyLayout(cy);
+    cy.fit(undefined, 48);
   }
 
   function patchValues(cyInstance, allValues, changedIds) {
@@ -668,6 +730,13 @@
             "z-index": 1,
           },
         },
+        {
+          selector: "edge.dep.force",
+          style: {
+            "source-endpoint": "outside-to-node",
+            "target-endpoint": "outside-to-node",
+          },
+        },
       ],
       layout: { name: "preset" },
       wheelSensitivity: 0.25,
@@ -675,7 +744,7 @@
       maxZoom: 2.5,
     });
 
-    applyNeuralLayout(cy);
+    applyLayout(cy);
     try {
       attachHtmlLabels(cy);
     } catch (err) {
@@ -727,7 +796,7 @@
     }
     cy.elements().remove();
     cy.add(buildElements(values));
-    applyNeuralLayout(cy);
+    applyLayout(cy);
     try {
       attachHtmlLabels(cy);
     } catch (err) {
@@ -763,14 +832,17 @@
       '<p style="padding:1rem;font:14px system-ui;color:#57534e;">Loading FormulaEvaluator graph…</p>';
 
     try {
-      const data = await loadBootstrap();
+      const [data, starterLayout] = await Promise.all([loadBootstrap(), loadStarterLayout()]);
       applyBootstrap(data);
+      STARTER_LAYOUT = starterLayout;
+      layoutMode = STARTER_LAYOUT ? "force" : "layered";
       cyEl.innerHTML = "";
       if (!PREVIEW) {
         document.getElementById("btn-reset").addEventListener("click", () => {
           resetAll();
         });
         document.getElementById("btn-fit").addEventListener("click", fitGraph);
+        document.getElementById("btn-layout").addEventListener("click", toggleLayout);
         document.addEventListener("keydown", (event) => {
           const key = event.key.toLowerCase();
           if (!(event.ctrlKey || event.metaKey) || key !== "z" || event.shiftKey) return;

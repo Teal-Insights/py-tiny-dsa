@@ -9,10 +9,14 @@ Fullscreen Cytoscape explorer. The docs homepage shows a **read-only preview**
 | `config.js` | `TINY_DSA_GRAPH_API` base URL (Railway); empty = same-origin |
 | `app.js` | Cytoscape wiring; loads schema/values from the graph API |
 | `bootstrap.json` | Static snapshot for offline / docs paint before API responds |
+| `force-layout.js` | Fits `layout.json` to node boxes (scale, then separate vertically) |
+| `layout.json` | Pipeline-written starter layout; absent → layered layout |
 | `style.css` | Layout, role colors, HTML node value typography |
 
-Values are computed by **excel-grapher FormulaEvaluator**. Layout uses
-topological layers (longest path).
+Values are computed by **excel-grapher FormulaEvaluator**. The starting layout
+is excel-grapher's clustered force layout, precomputed by the extraction
+pipeline into `layout.json`; the toolbar toggles to topological layers
+(longest path).
 
 ## Architecture (GitHub Pages + Railway)
 

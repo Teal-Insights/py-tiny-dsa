@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.js"></script>
     <script src="config.js"></script>
+    <script src="force-layout.js"></script>
   </head>
   <body>
     <script>
@@ -30,6 +31,7 @@
           <span class="chip"><span class="swatch internal"></span> internal</span>
           <span class="chip"><span class="swatch output"></span> output</span>
           <div class="actions">
+            <button type="button" id="btn-layout" hidden>Layered layout</button>
             <button type="button" id="btn-fit">Fit</button>
             <button type="button" id="btn-reset" class="primary">Reset defaults</button>
           </div>

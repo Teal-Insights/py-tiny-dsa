@@ -5,7 +5,7 @@ and (when needed) `constants.bindings.yaml` here.
 
 Bootstrap extract (`--extract-graph` / `--stop-after-stage extract`) is graph-first: empty `series: []` placeholder shards are fine so you can review `artifacts/dependency-graph/` before bindings exist. excel-grapher 5.1.4+ also loads and merges those placeholders (including divergent `concept_scheme` blocks). Author real series before export so the public API and leaf coverage are complete.
 
-Use schema version `1.19.0` and the vendored skill in [.agents/skills/author-bindings](../.agents/skills/author-bindings/SKILL.md). Prefer authoring from an extracted graph rather than guessing sheet geometry up front.
+Use schema version `1.22.0` and the vendored skill in [.agents/skills/author-bindings](../.agents/skills/author-bindings/SKILL.md). Prefer authoring from an extracted graph rather than guessing sheet geometry up front.
 
 ## Constant bindings (reader-only leaves)
 
@@ -20,7 +20,7 @@ Put constant series in `constants.bindings.yaml` (or any mergeable
 `constant: {}` instead of `input` / `output` / `internal`:
 
 ```yaml
-schema_version: 1.19.0
+schema_version: 1.22.0
 series:
   - id: shock_year_anchor
     sheet: Engine
@@ -141,11 +141,15 @@ but fail at output/input codegen:
    **unreachable** in the exported library even though every shard still
    looks valid in YAML. Share only when a merge is intentional.
 
-3. **`workbook_config.TARGETS` (and overlapping internal ranges) must cover
-   every bound data cell.** Sharding a “gap-only” column that sits past the
-   previous target end requires widening the target (and any internal
-   `data_range` that must stay on-graph for those cells). Bound cells outside
-   the extracted graph never resolve cleanly.
+3. **`workbook_config.TARGETS` (and overlapping internal ranges) must reach
+   every cell the model computes from.** Sharding a “gap-only” column that
+   sits past the previous target end requires widening the target (and any
+   overlapping internal `data_range`) so those cells enter the graph. An
+   outside-closure cell on an input is allowed: `partial_graph_overlap` is a
+   warning and the cell stays on the published series. Do **not** narrow
+   `data_range` to clear `partial_graph_overlap` or `leaf_in_formula_series`
+   (see the graph-coverage table in
+   [conventions.md](../.agents/skills/author-bindings/references/conventions.md)).
 
 Pedagogical catalog fragment (not used by the synthetic smoke workbook):
 [.agents/skills/author-bindings/assets/measure-shards.example.yaml](../.agents/skills/author-bindings/assets/measure-shards.example.yaml).
