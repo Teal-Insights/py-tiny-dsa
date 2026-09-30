@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "generator": "excel-grapher 24.0.0 clustered_force_layout",
+  "orientation": "left_to_right",
+  "link_distance": 40.0,
+  "positions": {
+    "country_name": [
+      -69.51,
+      51.03
+    ],
+    "country_initial_debt": [
+      -78.02,
+      -8.16
+    ],
+    "growth_baseline": [
+      -111.82,
+      9.35
+    ],
+    "interest_baseline": [
+      -27.85,
+      32.69
+    ],
+    "primary_balance_baseline": [
+      -89.28,
+      -70.39
+    ],
+    "shock_year": [
+      -109.5,
+      61.05
+    ],
+    "shock_type": [
+      -44.63,
+      -37.08
+    ],
+    "shock_magnitudes": [
+      -129.52,
+      -38.49
+    ],
+    "initial_debt_resolved": [
+      3.35,
+      50.06
+    ],
+    "engine_initial_debt_baseline": [
+      55.83,
+      39.34
+    ],
+    "engine_initial_debt_shocked": [
+      23.81,
+      -9.83
+    ],
+    "shock_magnitude_resolved": [
+      -4.38,
+      14.2
+    ],
+    "shock_active": [
+      8.36,
+      -57.73
+    ],
+    "shocked_growth": [
+      -17.69,
+      -16.08
+    ],
+    "shocked_interest": [
+      53.35,
+      -9.28
+    ],
+    "shocked_primary_balance": [
+      -22.21,
+      -44.81
+    ],
+    "baseline_path_internal": [
+      52.79,
+      85.14
+    ],
+    "shocked_path_internal": [
+      45.16,
+      -51.02
+    ],
+    "output_baseline": [
+      139.79,
+      41.03
+    ],
+    "output_shocked": [
+      149.22,
+      -43.51
+    ],
+    "output_delta": [
+      172.76,
+      2.48
+    ]
+  }
+}

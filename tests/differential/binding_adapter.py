@@ -78,6 +78,12 @@ def _axis_names(default: object) -> tuple[str, ...]:
     return tuple(names)
 
 
+def _bound_coordinates(
+    cells: Sequence[Mapping[str, Any]], axis_names: Sequence[str]
+) -> tuple[tuple[Any, ...], ...]:
+    return tuple(tuple(cell["key"][field] for field in axis_names) for cell in cells)
+
+
 def _overlay_named_series(
     series: Mapping[str, Any],
     default: object,
@@ -86,12 +92,6 @@ def _overlay_named_series(
     series_id = str(series["id"])
     cells = series["cells"]
     size = _named_series_domain_size(default)
-    if size != len(cells):
-        raise ValueError(
-            f"{series_id} default length {size} does not match {len(cells)} bound cells"
-        )
-    if not records:
-        return default
     with_records = getattr(default, "with_records", None)
     items = getattr(default, "items", None)
     if not callable(with_records) or not callable(items):
@@ -105,6 +105,19 @@ def _overlay_named_series(
             f"{series_id} key_fields {key_fields} do not match series axes {axis_names}"
         )
     merged = dict(items())
+    # Published input series keep outside-closure cells. Graph derivation drops
+    # those cells (`partial_graph_overlap`), so the default domain may be a
+    # superset of the bound leaves. A bound coordinate missing from the domain
+    # is still a hard mismatch.
+    missing = [
+        coord for coord in _bound_coordinates(cells, axis_names) if coord not in merged
+    ]
+    if missing:
+        raise ValueError(
+            f"{series_id} default length {size} does not match {len(cells)} bound cells"
+        )
+    if not records:
+        return default
     for record in records:
         coord = tuple(record[field] for field in axis_names)
         if coord not in merged:
@@ -121,7 +134,11 @@ def overlay_series_values(
     default: object,
     records: Sequence[Mapping[str, Any]] = (),
 ) -> object:
-    """Return catalog-order values, or a named-axis series, with sparse overlays."""
+    """Return catalog-order values, or a named-axis series, with sparse overlays.
+
+    A named-series default may include outside-closure coordinates that graph
+    derivation omitted. Those coordinates stay at their published values.
+    """
     if _named_series_domain_size(default) is not None:
         return _overlay_named_series(series, default, records)
     series_id = str(series["id"])
